@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JamaicaHealthOps — Operations Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f3;
+      --bg-tertiary: #eeede9;
+      --text-primary: #1a1a18;
+      --text-secondary: #5f5e5a;
+      --text-tertiary: #888780;
+      --border: rgba(0,0,0,0.12);
+      --border-md: rgba(0,0,0,0.18);
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --green: #1D9E75;
+      --green-light: #E1F5EE;
+      --green-dark: #0F6E56;
+      --amber: #EF9F27;
+      --amber-light: #FAEEDA;
+      --amber-dark: #854F0B;
+      --red: #E24B4A;
+      --red-light: #FCEBEB;
+      --red-dark: #A32D2D;
+      --coral: #D85A30;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1e1e1c;
+        --bg-secondary: #282825;
+        --bg-tertiary: #111110;
+        --text-primary: #f0efe9;
+        --text-secondary: #b4b2a9;
+        --text-tertiary: #888780;
+        --border: rgba(255,255,255,0.1);
+        --border-md: rgba(255,255,255,0.18);
+        --green-light: rgba(29,158,117,0.15);
+        --amber-light: rgba(239,159,39,0.15);
+        --red-light: rgba(226,75,74,0.15);
+      }
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-tertiary); color: var(--text-primary); font-size: 14px; }
+
+    .dash { display: grid; grid-template-columns: 220px 1fr; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ─────────────────────────────── */
+    .sidebar { background: var(--bg-primary); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+    .sidebar-logo { padding: 20px; border-bottom: 0.5px solid var(--border); }
+    .logo-mark { width: 32px; height: 32px; background: var(--green); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+    .logo-mark svg { width: 18px; height: 18px; fill: none; stroke: white; stroke-width: 2; }
+    .app-name { font-size: 13px; font-weight: 500; }
+    .app-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+
+    .nav-section { padding: 16px 20px 4px; font-size: 10px; font-weight: 500; color: var(--text-tertiary); letter-spacing: 0.08em; text-transform: uppercase; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-left: 2px solid transparent; transition: background 0.15s; }
+    .nav-item:hover { background: var(--bg-secondary); color: var(--text-primary); }
+    .nav-item.active { color: var(--green); background: var(--green-light); border-left-color: var(--green); font-weight: 500; }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    .role-badge { margin: auto 16px 20px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 0.5px solid var(--border); }
+    .role-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .role-name { font-size: 13px; font-weight: 500; margin-top: 2px; }
+    .role-select { width: 100%; margin-top: 8px; font-size: 12px; padding: 5px 8px; border-radius: 6px; border: 0.5px solid var(--border); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; }
+
+    /* ── Main ────────────────────────────────── */
+    .main { display: flex; flex-direction: column; overflow: hidden; }
+    .topbar { background: var(--bg-primary); border-bottom: 0.5px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .topbar-title { font-size: 15px; font-weight: 500; }
+    .topbar-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+    .live-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--green); font-weight: 500; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .time-label { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+    .refresh-btn { font-size: 12px; padding: 5px 14px; border-radius: var(--radius-md); background: transparent; border: 0.5px solid var(--border-md); color: var(--text-secondary); cursor: pointer; }
+    .refresh-btn:hover { background: var(--bg-secondary); }
+
+    .content { flex: 1; padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Metric cards ────────────────────────── */
+    .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 14px 16px; }
+    .metric-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric-value { font-size: 28px; font-weight: 500; margin-top: 4px; line-height: 1; }
+    .metric-delta { font-size: 11px; margin-top: 6px; color: var(--text-tertiary); }
+    .delta-warn { color: var(--coral); }
+    .delta-ok { color: var(--green); }
+
+    /* ── Cards ───────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
+    .card { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .card-title { font-size: 13px; font-weight: 500; }
+    .card-action { font-size: 11px; color: var(--green); cursor: pointer; }
+    .card-action:hover { text-decoration: underline; }
+
+    /* ── Facility table ──────────────────────── */
+    .facility-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .facility-table th { font-size: 10px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; text-align: left; padding: 0 8px 10px; border-bottom: 0.5px solid var(--border); }
+    .facility-table td { padding: 10px 8px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+    .facility-table tr:last-child td { border-bottom: none; }
+    .facility-table tr:hover td { background: var(--bg-secondary); }
+
+    .status-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 500; }
+    .status-critical { background: var(--red-light); color: var(--red-dark); }
+    .status-warning { background: var(--amber-light); color: var(--amber-dark); }
+    .status-stable { background: var(--green-light); color: var(--green-dark); }
+
+    .bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .bar-track { flex: 1; height: 6px; background: var(--bg-secondary); border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+    .bar-pct { font-size: 11px; color: var(--text-secondary); min-width: 30px; text-align: right; }
+
+    /* ── Alerts ──────────────────────────────── */
+    .alert-list { display: flex; flex-direction: column; gap: 8px; }
+    .alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border); background: var(--bg-secondary); }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+    .alert-dot.critical { background: var(--red); }
+    .alert-dot.warning { background: var(--amber); }
+    .alert-dot.info { background: var(--green); }
+    .alert-title { font-size: 12px; font-weight: 500; }
+    .alert-time { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+
+    /* ── Forecast ────────────────────────────── */
+    .forecast-tabs { display: flex; border: 0.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; width: fit-content; margin-bottom: 12px; }
+    .ftab { font-size: 11px; padding: 5px 14px; cursor: pointer; background: transparent; border: none; color: var(--text-secondary); }
+    .ftab.active { background: var(--bg-secondary); color: var(--text-primary); font-weight: 500; }
+
+    .mini-stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 12px; }
+    .mini-stat { text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: var(--radius-md); }
+    .mini-stat-val { font-size: 16px; font-weight: 500; }
+    .mini-stat-lbl { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+    .mini-stat-overflow { color: var(--red-dark); }
+
+    /* ── Inflow card ─────────────────────────── */
+    .inflow-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .slider-group { display: flex; align-items: center; gap: 8px; }
+    .slider-group label { font-size: 11px; color: var(--text-tertiary); }
+    .slider-group input[type=range] { width: 90px; accent-color: var(--green); }
+    .slider-val { font-size: 12px; font-weight: 500; min-width: 28px; }
+  </style>
+</head>
+<body>
+
+<div class="dash">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div class="app-name">JamaicaHealthOps</div>
+      <div class="app-sub">Hospital Intelligence Platform</div>
+    </div>
+
+    <div class="nav-section">Operations</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Overview
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Bed Management
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Live Admissions
+    </div>
+
+    <div class="nav-section">Analytics</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Demand Forecast
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Optimization
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Reports
+    </div>
+
+    <div class="nav-section">System</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 003.17 17.8M4.93 19.07A10 10 0 0020.83 6.2"/></svg>
+      Settings
+    </div>
+
+    <div class="role-badge">
+      <div class="role-label">Active role</div>
+      <div class="role-name" id="role-display">Hospital Administrator</div>
+      <select class="role-select" id="role-select" onchange="switchRole(this.value)">
+        <option value="admin">Hospital Administrator</option>
+        <option value="ward">Ward / Clinical Staff</option>
+        <option value="ministry">Ministry of Health</option>
+        <option value="analyst">Data Analyst</option>
+      </select>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="page-title">Operations Overview — Kingston Public Hospital</div>
+        <div class="topbar-sub" id="page-sub">All wards · Admissions, capacity & overflow risk</div>
+      </div>
+      <div class="topbar-right">
+        <div class="live-badge"><span class="live-dot"></span> Live</div>
+        <div class="time-label" id="clock">--:--:--</div>
+        <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- Metric cards -->
+      <div class="metric-row">
+        <div class="metric-card">
+          <div class="metric-label">Total Beds</div>
+          <div class="metric-value">847</div>
+          <div class="metric-delta">Across 6 facilities</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Occupied</div>
+          <div class="metric-value" id="m-occ">694</div>
+          <div class="metric-delta delta-warn" id="m-occ-pct">82% utilization ↑</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Available</div>
+          <div class="metric-value" id="m-avail">153</div>
+          <div class="metric-delta delta-ok">18% headroom</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Overflow Risk</div>
+          <div class="metric-value delta-warn" id="m-risk">2</div>
+          <div class="metric-delta delta-warn">Facilities critical</div>
+        </div>
+      </div>
+
+      <!-- Facility table + Alerts/Forecast -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Facility Bed Utilization</div>
+            <div class="card-action">Export CSV ↓</div>
+          </div>
+          <table class="facility-table">
+            <thead>
+              <tr>
+                <th>Facility</th>
+                <th>Parish</th>
+                <th>Utilization</th>
+                <th>Beds</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="facility-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="display:flex; flex-direction:column; gap:16px;">
+          <!-- Alerts -->
+          <div>
+            <div class="card-header" style="margin-bottom:10px;">
+              <div class="card-title">Active Alerts</div>
+              <span style="font-size:11px; color:var(--text-tertiary);" id="alert-count">4 alerts</span>
+            </div>
+            <div class="alert-list" id="alert-list"></div>
+          </div>
+
+          <!-- Forecast -->
+          <div>
+            <div class="card-title" style="margin-bottom:10px;">24hr Demand Forecast</div>
+            <div class="forecast-tabs">
+              <button class="ftab active" onclick="setTab(this,'24h')">24h</button>
+              <button class="ftab" onclick="setTab(this,'7d')">7 days</button>
+              <button class="ftab" onclick="setTab(this,'30d')">30 days</button>
+            </div>
+            <div style="position:relative; height:130px;">
+              <canvas id="forecastChart"></canvas>
+            </div>
+            <div class="mini-stat-row">
+              <div class="mini-stat">
+                <div class="mini-stat-val" id="fc-peak">712</div>
+                <div class="mini-stat-lbl">Peak demand</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-val" id="fc-avg">681</div>
+                <div class="mini-stat-lbl">Avg demand</div>
+              </div>
+              <div class="mini-stat">
+                <div class="mini-stat-val mini-stat-overflow" id="fc-overflow">0</div>
+                <div class="mini-stat-lbl">Est. overflow</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inflow chart -->
+      <div class="card">
+        <div class="inflow-header">
+          <div class="card-title">Inflow rate — admissions per hour (Poisson simulation)</div>
+          <div class="slider-group">
+            <label>Seasonality factor</label>
+            <input type="range" min="0.5" max="2" step="0.1" value="1" id="season-slider" oninput="updateSeason(this.value)">
+            <span class="slider-val" id="season-val">1.0×</span>
+          </div>
+        </div>
+        <div style="position:relative; height:110px;">
+          <canvas id="inflowChart"></canvas>
+        </div>
+      </div>
+
+    </div><!-- .content -->
+  </div><!-- .main -->
+</div><!-- .dash -->
+
+<script>
+  /* ── Data ── */
+  const TOTAL_BEDS = 847;
+
+  const facilities = [
+    { name: "Kingston Public",    parish: "Kingston",   total: 220, occ: 204, status: "critical" },
+    { name: "University Hospital",parish: "Kingston",   total: 180, occ: 162, status: "critical" },
+    { name: "Cornwall Regional",  parish: "St. James",  total: 150, occ: 118, status: "warning"  },
+    { name: "Mandeville Regional",parish: "Manchester", total: 120, occ:  84, status: "stable"   },
+    { name: "May Pen Hospital",   parish: "Clarendon",  total: 100, occ:  72, status: "stable"   },
+    { name: "St. Ann's Bay",      parish: "St. Ann",    total:  77, occ:  54, status: "stable"   },
+  ];
+
+  const alerts = [
+    { type: "critical", title: "Kingston Public approaching overflow",       time: "2 min ago"  },
+    { type: "critical", title: "UHWI — ICU at 97% capacity",                time: "8 min ago"  },
+    { type: "warning",  title: "Cornwall Regional: surge forecast +18%",    time: "31 min ago" },
+    { type: "info",     title: "PuLP optimisation ran — 14 beds reallocated",time: "1 hr ago"  },
+  ];
+
+  const hours       = Array.from({length:24}, (_,i) => `${String(i).padStart(2,'0')}:00`);
+  const baseDemand  = [610,598,589,582,578,580,596,621,648,672,685,694,698,701,699,695,688,681,675,669,658,645,634,622];
+  const inflowBase  = [12,11,9,8,8,10,14,19,24,28,31,30,29,30,31,32,31,29,27,24,22,19,16,13];
+
+  let seasonFactor  = 1.0;
+
+  /* ── Render helpers ── */
+  function statusColor(s) {
+    return s === "critical" ? "#E24B4A" : s === "warning" ? "#EF9F27" : "#1D9E75";
+  }
+
+  function renderFacilities() {
+    const tbody = document.getElementById("facility-tbody");
+    let occ = 0;
+    tbody.innerHTML = facilities.map(f => {
+      occ += f.occ;
+      const pct   = Math.round((f.occ / f.total) * 100);
+      const color = statusColor(f.status);
+      const pill  = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.status];
+      return `<tr>
+        <td style="font-weight:500;">${f.name}</td>
+        <td style="color:var(--text-secondary);">${f.parish}</td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+            <span class="bar-pct">${pct}%</span>
+          </div>
+        </td>
+        <td style="color:var(--text-secondary);font-size:11px;">${f.occ}/${f.total}</td>
+        <td><span class="status-pill status-${f.status}">${pill}</span></td>
+      </tr>`;
+    }).join("");
+
+    const avail = TOTAL_BEDS - occ;
+    const pct   = Math.round((occ / TOTAL_BEDS) * 100);
+    document.getElementById("m-occ").textContent    = occ;
+    document.getElementById("m-avail").textContent  = avail;
+    document.getElementById("m-occ-pct").textContent = `${pct}% utilization`;
+    document.getElementById("m-risk").textContent   = facilities.filter(f => f.status === "critical").length;
+  }
+
+  function renderAlerts() {
+    document.getElementById("alert-list").innerHTML = alerts.map(a => `
+      <div class="alert-item">
+        <span class="alert-dot ${a.type}"></span>
+        <div>
+          <div class="alert-title">${a.title}</div>
+          <div class="alert-time">${a.time}</div>
+        </div>
+      </div>`).join("");
+    document.getElementById("alert-count").textContent = `${alerts.length} alerts`;
+  }
+
+  /* ── Clock ── */
+  function tick() {
+    document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-JM");
+  }
+  setInterval(tick, 1000); tick();
+
+  /* ── Refresh (simulates live polling) ── */
+  function refreshData() {
+    facilities.forEach(f => {
+      const delta = Math.floor(Math.random() * 7) - 3;
+      f.occ = Math.max(0, Math.min(f.total, f.occ + delta));
+      const pct = f.occ / f.total;
+      f.status = pct >= 0.92 ? "critical" : pct >= 0.80 ? "warning" : "stable";
+    });
+    renderFacilities();
+  }
+  setInterval(refreshData, 8000);
+
+  /* ── Forecast chart ── */
+  const forecastChart = new Chart(document.getElementById("forecastChart"), {
+    type: "line",
+    data: {
+      labels: hours,
+      datasets: [
+        { label: "Capacity",  data: Array(24).fill(TOTAL_BEDS), borderColor: "#E24B4A", borderDash: [4,3], borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Forecast",  data: baseDemand.map(v => Math.round(v * 1.04)), borderColor: "#1D9E75", borderWidth: 2, pointRadius: 0, fill: { target:"origin", above:"rgba(29,158,117,0.07)" }, tension: 0.4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
+        y: { ticks: { font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" }, min:550, max:900 }
+      }
+    }
+  });
+
+  function setTab(el, range) {
+    document.querySelectorAll(".ftab").forEach(t => t.classList.remove("active"));
+    el.classList.add("active");
+    const m = { "24h":1.04, "7d":1.12, "30d":1.18 }[range] || 1.04;
+    forecastChart.data.datasets[1].data = baseDemand.map(v => Math.round(v * m));
+    forecastChart.update();
+    const peak     = Math.round(712 * m);
+    const overflow = Math.max(0, peak - TOTAL_BEDS);
+    document.getElementById("fc-peak").textContent    = peak;
+    document.getElementById("fc-avg").textContent     = Math.round(681 * m);
+    document.getElementById("fc-overflow").textContent = overflow;
+  }
+
+  /* ── Inflow chart ── */
+  const inflowChart = new Chart(document.getElementById("inflowChart"), {
+    type: "bar",
+    data: {
+      labels: hours,
+      datasets: [{ data: inflowBase.slice(), backgroundColor:"rgba(29,158,117,0.45)", borderColor:"#1D9E75", borderWidth:1, borderRadius:2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{ display:false } },
+      scales: {
+        x: { ticks:{ font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
+        y: { ticks:{ font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
+      }
+    }
+  });
+
+  function updateSeason(v) {
+    seasonFactor = parseFloat(v);
+    document.getElementById("season-val").textContent = seasonFactor.toFixed(1) + "×";
+    inflowChart.data.datasets[0].data = inflowBase.map(val => Math.round(val * seasonFactor));
+    inflowChart.update();
+    const peak     = Math.round(712 * seasonFactor);
+    const overflow = Math.max(0, peak - TOTAL_BEDS);
+    document.getElementById("fc-peak").textContent    = peak;
+    document.getElementById("fc-avg").textContent     = Math.round(681 * seasonFactor);
+    document.getElementById("fc-overflow").textContent = overflow;
+  }
+
+  /* ── Role switcher ── */
+  const roleConfig = {
+    admin:    { title:"Operations Overview — Kingston Public Hospital",  sub:"All wards · Admissions, capacity & overflow risk" },
+    ward:     { title:"Ward Status — Live Bed Count",                   sub:"Clinical view · Admissions & discharges" },
+    ministry: { title:"National Overview — Jamaica Hospital Network",   sub:"Ministry of Health · All 6 facilities across parishes" },
+    analyst:  { title:"Model Outputs — Prophet + PuLP",                 sub:"Forecast accuracy · Solver logs · Raw data export" },
+  };
+  const roleLabels = {
+    admin:"Hospital Administrator", ward:"Ward / Clinical Staff",
+    ministry:"Ministry of Health",  analyst:"Data Analyst",
+  };
+
+  function switchRole(role) {
+    const cfg = roleConfig[role];
+    document.getElementById("page-title").textContent   = cfg.title;
+    document.getElementById("page-sub").textContent     = cfg.sub;
+    document.getElementById("role-display").textContent = roleLabels[role];
+  }
+
+  /* ── Init ── */
+  renderFacilities();
+  renderAlerts();
+</script>
+</body>
+</html>
