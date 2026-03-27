@@ -194,3 +194,26 @@ def _stub_forecast(
                 }
             )
     return rows
+
+# Alias so routers and optimizer can import run_forecast as before
+def run_forecast(req: "ForecastRequest") -> "ForecastResponse":
+    from backend.models.schemas import ForecastResponse, ForecastPoint
+    from datetime import datetime
+    records = get_forecast(
+        facility_id=req.facility_id,
+        periods=60,
+        scenario_multiplier=req.seasonality_factor,
+    )
+    forecasts = [
+        ForecastPoint(
+            facility_id=r["Facility_ID"],
+            name=r["Facility_ID"],
+            parish="",
+            beds=0,
+            yhat=r["yhat"],
+            yhat_lower=r.get("yhat_lower"),
+            yhat_upper=r.get("yhat_upper"),
+        )
+        for r in records
+    ]
+    return ForecastResponse(forecasts=forecasts, timestamp=datetime.utcnow())
