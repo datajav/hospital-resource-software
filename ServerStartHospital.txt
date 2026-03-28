@@ -1,0 +1,12 @@
+cd C:\Users\Javaughn\Documents\GitHub\hospital-resource-software
+set DS_DATA_PATH=C:\Users\Javaughn\Documents\GitHub\hospital-resource-software\data
+python -m uvicorn backend.main:app --reload --port 8000
+
+cd C:\Users\Javaughn\Documents\GitHub\hospital-resource-software\frontend
+python -m http.server 3000
+
+@echo off
+start cmd /k "cd /d C:\Users\Javaughn\Documents\GitHub\hospital-resource-software && set DS_DATA_PATH=C:\Users\Javaughn\Documents\GitHub\hospital-resource-software\data && python -m uvicorn backend.main:app --reload --port 8000"
+start cmd /k "cd /d C:\Users\Javaughn\Documents\GitHub\hospital-resource-software\frontend && python -m http.server 3000"
+start chrome http://localhost:3000/jamaica_health_ops_dashboard.html
+

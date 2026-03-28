@@ -196,24 +196,35 @@ def _stub_forecast(
     return rows
 
 # Alias so routers and optimizer can import run_forecast as before
-def run_forecast(req: "ForecastRequest") -> "ForecastResponse":
+def run_forecast(req) -> "ForecastResponse":
     from backend.models.schemas import ForecastResponse, ForecastPoint
+    from backend.services.hospitals import FACILITY_MAP
     from datetime import datetime
+
     records = get_forecast(
         facility_id=req.facility_id,
         periods=60,
         scenario_multiplier=req.seasonality_factor,
     )
-    forecasts = [
-        ForecastPoint(
-            facility_id=r["Facility_ID"],
-            name=r["Facility_ID"],
-            parish="",
-            beds=0,
-            yhat=r["yhat"],
-            yhat_lower=r.get("yhat_lower"),
-            yhat_upper=r.get("yhat_upper"),
-        )
-        for r in records
-    ]
+
+    # Deduplicate — take the most recent yhat per facility
+    seen = {}
+    for r in records:
+        fid = r["Facility_ID"]
+        if fid not in seen:
+            seen[fid] = r
+
+    forecasts = []
+    for fid, r in seen.items():
+        fac = FACILITY_MAP.get(fid)
+        forecasts.append(ForecastPoint(
+            facility_id=fid,
+            name=fac.name if fac else fid,
+            parish=fac.parish if fac else "",
+            beds=fac.beds_z999 if fac else 0,
+            yhat=round(r["yhat"], 2),
+            yhat_lower=round(r.get("yhat_lower", 0), 2),
+            yhat_upper=round(r.get("yhat_upper", 0), 2),
+        ))
+
     return ForecastResponse(forecasts=forecasts, timestamp=datetime.utcnow())
