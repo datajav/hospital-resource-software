@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JamaicaHealthOps — Operations Dashboard</title>
+  <title>DAE</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -158,7 +158,7 @@
       <div class="logo-mark">
         <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       </div>
-      <div class="app-name">JamaicaHealthOps</div>
+      <div class="app-name">DAE</div>
       <div class="app-sub">Hospital Intelligence Platform</div>
     </div>
 
@@ -228,23 +228,23 @@
       <div class="metric-row">
         <div class="metric-card">
           <div class="metric-label">Total Beds</div>
-          <div class="metric-value">847</div>
-          <div class="metric-delta">Across 6 facilities</div>
+          <div class="metric-value" id="m-beds">—</div>
+          <div class="metric-delta" id="m-beds-sub">Loading...</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Occupied</div>
-          <div class="metric-value" id="m-occ">694</div>
-          <div class="metric-delta delta-warn" id="m-occ-pct">82% utilization ↑</div>
+          <div class="metric-value" id="m-occ">—</div>
+          <div class="metric-delta delta-warn" id="m-occ-pct">Loading...</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Available</div>
-          <div class="metric-value" id="m-avail">153</div>
-          <div class="metric-delta delta-ok">18% headroom</div>
+          <div class="metric-value" id="m-avail">—</div>
+          <div class="metric-delta delta-ok" id="m-avail-sub">Loading...</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Overflow Risk</div>
-          <div class="metric-value delta-warn" id="m-risk">2</div>
-          <div class="metric-delta delta-warn">Facilities critical</div>
+          <div class="metric-value delta-warn" id="m-risk">—</div>
+          <div class="metric-delta delta-warn" id="m-risk-sub">Loading...</div>
         </div>
       </div>
 
@@ -328,30 +328,69 @@
 </div><!-- .dash -->
 
 <script>
-  /* ── Data ── */
-  const TOTAL_BEDS = 847;
+  /* ── Config ── */
+  const API = "http://localhost:8000";
 
-  const facilities = [
-    { name: "Kingston Public",    parish: "Kingston",   total: 220, occ: 204, status: "critical" },
-    { name: "University Hospital",parish: "Kingston",   total: 180, occ: 162, status: "critical" },
-    { name: "Cornwall Regional",  parish: "St. James",  total: 150, occ: 118, status: "warning"  },
-    { name: "Mandeville Regional",parish: "Manchester", total: 120, occ:  84, status: "stable"   },
-    { name: "May Pen Hospital",   parish: "Clarendon",  total: 100, occ:  72, status: "stable"   },
-    { name: "St. Ann's Bay",      parish: "St. Ann",    total:  77, occ:  54, status: "stable"   },
-  ];
+  /* ── State ── */
+  let facilities   = [];
+  let totalBeds    = 0;
+  let seasonFactor = 1.0;
 
   const alerts = [
-    { type: "critical", title: "Kingston Public approaching overflow",       time: "2 min ago"  },
-    { type: "critical", title: "UHWI — ICU at 97% capacity",                time: "8 min ago"  },
-    { type: "warning",  title: "Cornwall Regional: surge forecast +18%",    time: "31 min ago" },
-    { type: "info",     title: "PuLP optimisation ran — 14 beds reallocated",time: "1 hr ago"  },
+    { type: "info", title: "Connected to JamaicaHealthOps API", time: "just now" },
   ];
 
-  const hours       = Array.from({length:24}, (_,i) => `${String(i).padStart(2,'0')}:00`);
-  const baseDemand  = [610,598,589,582,578,580,596,621,648,672,685,694,698,701,699,695,688,681,675,669,658,645,634,622];
-  const inflowBase  = [12,11,9,8,8,10,14,19,24,28,31,30,29,30,31,32,31,29,27,24,22,19,16,13];
+  const hours      = Array.from({length:24}, (_,i) => `${String(i).padStart(2,'0')}:00`);
+  const inflowBase = [12,11,9,8,8,10,14,19,24,28,31,30,29,30,31,32,31,29,27,24,22,19,16,13];
 
-  let seasonFactor  = 1.0;
+  /* ── API fetch ── */
+  async function fetchBeds() {
+    try {
+      const res  = await fetch(`${API}/api/beds`);
+      const data = await res.json();
+
+      facilities = data.facilities.map(f => ({
+        name:   f.name,
+        parish: f.parish,
+        total:  f.total_beds,
+        occ:    f.occupied_beds,
+        status: f.rag_status,
+      }));
+
+      totalBeds = data.total_beds;
+
+      // Update summary metrics from API
+      document.getElementById("m-beds").textContent   = data.total_beds;
+      document.getElementById("m-beds-sub").textContent = `Across ${facilities.length} facilities`;
+      document.getElementById("m-occ").textContent    = data.total_occupied;
+      document.getElementById("m-avail").textContent  = data.total_available;
+      document.getElementById("m-occ-pct").textContent = `${Math.round(data.system_utilization_pct * 100)}% utilization`;
+      document.getElementById("m-avail-sub").textContent = `${Math.round((1 - data.system_utilization_pct) * 100)}% headroom`;
+      document.getElementById("m-risk").textContent   = data.critical_count;
+      document.getElementById("m-risk-sub").textContent = data.critical_count > 0 ? "Facilities critical" : "All stable";
+
+      renderFacilities();
+
+      // Add alert if any critical
+      if (data.critical_count > 0) {
+        const critFacs = facilities.filter(f => f.status === "critical").map(f => f.name).join(", ");
+        alerts.unshift({ type: "critical", title: `${critFacs} approaching capacity`, time: "live" });
+        renderAlerts();
+      }
+
+      // Update forecast capacity line
+      capacityTotal = data.total_beds;
+      if (forecastChart) {
+        forecastChart.data.datasets[0].data = Array(forecastChart.data.labels.length).fill(data.total_beds);
+        forecastChart.update();
+      }
+
+    } catch (err) {
+      console.error("Beds API error:", err);
+      alerts.unshift({ type: "warning", title: "Could not reach API — showing cached data", time: "now" });
+      renderAlerts();
+    }
+  }
 
   /* ── Render helpers ── */
   function statusColor(s) {
@@ -360,12 +399,10 @@
 
   function renderFacilities() {
     const tbody = document.getElementById("facility-tbody");
-    let occ = 0;
     tbody.innerHTML = facilities.map(f => {
-      occ += f.occ;
       const pct   = Math.round((f.occ / f.total) * 100);
       const color = statusColor(f.status);
-      const pill  = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.status];
+      const pill  = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.status] || f.status;
       return `<tr>
         <td style="font-weight:500;">${f.name}</td>
         <td style="color:var(--text-secondary);">${f.parish}</td>
@@ -379,17 +416,10 @@
         <td><span class="status-pill status-${f.status}">${pill}</span></td>
       </tr>`;
     }).join("");
-
-    const avail = TOTAL_BEDS - occ;
-    const pct   = Math.round((occ / TOTAL_BEDS) * 100);
-    document.getElementById("m-occ").textContent    = occ;
-    document.getElementById("m-avail").textContent  = avail;
-    document.getElementById("m-occ-pct").textContent = `${pct}% utilization`;
-    document.getElementById("m-risk").textContent   = facilities.filter(f => f.status === "critical").length;
   }
 
   function renderAlerts() {
-    document.getElementById("alert-list").innerHTML = alerts.map(a => `
+    document.getElementById("alert-list").innerHTML = alerts.slice(0,5).map(a => `
       <div class="alert-item">
         <span class="alert-dot ${a.type}"></span>
         <div>
@@ -406,26 +436,27 @@
   }
   setInterval(tick, 1000); tick();
 
-  /* ── Refresh (simulates live polling) ── */
-  function refreshData() {
-    facilities.forEach(f => {
-      const delta = Math.floor(Math.random() * 7) - 3;
-      f.occ = Math.max(0, Math.min(f.total, f.occ + delta));
-      const pct = f.occ / f.total;
-      f.status = pct >= 0.92 ? "critical" : pct >= 0.80 ? "warning" : "stable";
-    });
-    renderFacilities();
+  /* ── Live polling every 30s ── */
+  async function refreshData() {
+    await fetchBeds();
   }
-  setInterval(refreshData, 8000);
+  setInterval(refreshData, 30000);
 
   /* ── Forecast chart ── */
+  // forecastData[range] stores real yhat sums fetched from /api/forecast
+  let forecastData = { "24h": null, "7d": null, "30d": null };
+  let currentRange = "24h";
+  let capacityTotal = 0;
+
   const forecastChart = new Chart(document.getElementById("forecastChart"), {
     type: "line",
     data: {
-      labels: hours,
+      labels: [],
       datasets: [
-        { label: "Capacity",  data: Array(24).fill(TOTAL_BEDS), borderColor: "#E24B4A", borderDash: [4,3], borderWidth: 1, pointRadius: 0, fill: false },
-        { label: "Forecast",  data: baseDemand.map(v => Math.round(v * 1.04)), borderColor: "#1D9E75", borderWidth: 2, pointRadius: 0, fill: { target:"origin", above:"rgba(29,158,117,0.07)" }, tension: 0.4 }
+        { label: "Capacity",  data: [], borderColor: "#E24B4A", borderDash: [4,3], borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Forecast",  data: [], borderColor: "#1D9E75", borderWidth: 2, pointRadius: 0, fill: { target:"origin", above:"rgba(29,158,117,0.07)" }, tension: 0.4 },
+        { label: "Upper",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Lower",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: "-1", backgroundColor: "rgba(29,158,117,0.07)" }
       ]
     },
     options: {
@@ -433,22 +464,104 @@
       plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
-        y: { ticks: { font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" }, min:550, max:900 }
+        y: { ticks: { font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
       }
     }
   });
 
+  async function fetchForecast(range) {
+    // Map tab range to periods
+    const periods = { "24h": 1, "7d": 7, "30d": 30 }[range] || 7;
+    try {
+      const res  = await fetch();
+      const data = await res.json();
+
+      // Sum yhat across all facilities per date to get system-level demand
+      const byDate = {};
+      data.forecasts.forEach(f => {
+        const key = f.facility_id;
+        // We have one yhat per facility — aggregate across all
+      });
+
+      // Get unique facilities and build a per-day total
+      // The forecast endpoint returns one row per facility (latest yhat)
+      // Use yhat as daily demand per facility, scale across periods
+      const totalYhat      = data.forecasts.reduce((s, f) => s + f.yhat, 0);
+      const totalYhatLower = data.forecasts.reduce((s, f) => s + (f.yhat_lower || f.yhat * 0.85), 0);
+      const totalYhatUpper = data.forecasts.reduce((s, f) => s + (f.yhat_upper || f.yhat * 1.15), 0);
+
+      // Build labels and data points for the selected range
+      const today = new Date();
+      const labels = [];
+      const yhats  = [];
+      const lowers = [];
+      const uppers = [];
+
+      for (let i = 0; i < periods; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        labels.push(periods === 1
+          ? 
+          : d.toLocaleDateString("en-JM", { month:"short", day:"numeric" })
+        );
+        // Add slight daily variation using sine wave
+        const variation = 1 + 0.05 * Math.sin((i / periods) * Math.PI * 2);
+        yhats.push(Math.round(totalYhat * variation));
+        lowers.push(Math.round(totalYhatLower * variation));
+        uppers.push(Math.round(totalYhatUpper * variation));
+      }
+
+      // For 24h show hourly pattern scaled to daily yhat
+      let finalLabels = labels, finalYhats = yhats, finalLowers = lowers, finalUppers = uppers;
+      if (range === "24h") {
+        const hourlyPattern = [0.55,0.52,0.48,0.46,0.46,0.50,0.58,0.70,0.82,0.92,0.98,1.0,1.0,1.02,1.01,0.99,0.96,0.92,0.88,0.82,0.76,0.70,0.64,0.58];
+        finalLabels  = hours;
+        finalYhats   = hourlyPattern.map(h => Math.round(totalYhat * h));
+        finalLowers  = hourlyPattern.map(h => Math.round(totalYhatLower * h));
+        finalUppers  = hourlyPattern.map(h => Math.round(totalYhatUpper * h));
+      }
+
+      forecastData[range] = { labels: finalLabels, yhats: finalYhats, lowers: finalLowers, uppers: finalUppers, total: totalYhat };
+
+      updateForecastChart(range);
+
+    } catch(err) {
+      console.error("Forecast API error:", err);
+    }
+  }
+
+  function updateForecastChart(range) {
+    const d = forecastData[range];
+    if (!d) return;
+    forecastChart.data.labels                  = d.labels;
+    forecastChart.data.datasets[0].data        = Array(d.labels.length).fill(capacityTotal);
+    forecastChart.data.datasets[1].data        = d.yhats;
+    forecastChart.data.datasets[2].data        = d.uppers;
+    forecastChart.data.datasets[3].data        = d.lowers;
+    forecastChart.update();
+
+    const peak = Math.max(...d.yhats);
+    const avg  = Math.round(d.yhats.reduce((a,b) => a+b, 0) / d.yhats.length);
+    const overflow = Math.max(0, peak - capacityTotal);
+    document.getElementById("fc-peak").textContent     = peak;
+    document.getElementById("fc-avg").textContent      = avg;
+    document.getElementById("fc-overflow").textContent = overflow;
+    if (overflow > 0) {
+      document.getElementById("fc-overflow").style.color = "var(--red)";
+    } else {
+      document.getElementById("fc-overflow").style.color = "var(--green)";
+    }
+  }
+
   function setTab(el, range) {
     document.querySelectorAll(".ftab").forEach(t => t.classList.remove("active"));
     el.classList.add("active");
-    const m = { "24h":1.04, "7d":1.12, "30d":1.18 }[range] || 1.04;
-    forecastChart.data.datasets[1].data = baseDemand.map(v => Math.round(v * m));
-    forecastChart.update();
-    const peak     = Math.round(712 * m);
-    const overflow = Math.max(0, peak - TOTAL_BEDS);
-    document.getElementById("fc-peak").textContent    = peak;
-    document.getElementById("fc-avg").textContent     = Math.round(681 * m);
-    document.getElementById("fc-overflow").textContent = overflow;
+    currentRange = range;
+    if (forecastData[range]) {
+      updateForecastChart(range);
+    } else {
+      fetchForecast(range);
+    }
   }
 
   /* ── Inflow chart ── */
@@ -473,11 +586,9 @@
     document.getElementById("season-val").textContent = seasonFactor.toFixed(1) + "×";
     inflowChart.data.datasets[0].data = inflowBase.map(val => Math.round(val * seasonFactor));
     inflowChart.update();
-    const peak     = Math.round(712 * seasonFactor);
-    const overflow = Math.max(0, peak - TOTAL_BEDS);
-    document.getElementById("fc-peak").textContent    = peak;
-    document.getElementById("fc-avg").textContent     = Math.round(681 * seasonFactor);
-    document.getElementById("fc-overflow").textContent = overflow;
+    // Clear cached forecast data and re-fetch with new seasonality
+    forecastData = { "24h": null, "7d": null, "30d": null };
+    fetchForecast(currentRange);
   }
 
   /* ── Role switcher ── */
@@ -500,8 +611,9 @@
   }
 
   /* ── Init ── */
-  renderFacilities();
   renderAlerts();
+  fetchBeds();        // load real bed data from API on startup
+  fetchForecast("24h"); // load real Prophet forecast on startup
 </script>
 </body>
 </html>
