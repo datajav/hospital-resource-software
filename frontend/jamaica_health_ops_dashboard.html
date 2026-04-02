@@ -343,6 +343,155 @@
   const hours      = Array.from({length:24}, (_,i) => `${String(i).padStart(2,'0')}:00`);
   const inflowBase = [12,11,9,8,8,10,14,19,24,28,31,30,29,30,31,32,31,29,27,24,22,19,16,13];
 
+  /* ── Forecast chart ── */
+  // forecastData[range] stores real yhat sums fetched from /api/forecast
+  let forecastData = { "24h": null, "7d": null, "30d": null };
+  let currentRange = "24h";
+  let capacityTotal = 0;
+
+  const forecastChart = new Chart(document.getElementById("forecastChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Capacity",  data: [], borderColor: "#E24B4A", borderDash: [4,3], borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Forecast",  data: [], borderColor: "#1D9E75", borderWidth: 2, pointRadius: 0, fill: { target:"origin", above:"rgba(29,158,117,0.07)" }, tension: 0.4 },
+        { label: "Upper",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Lower",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: "-1", backgroundColor: "rgba(29,158,117,0.07)" }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
+        y: { ticks: { font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
+      }
+    }
+  });
+
+  async function fetchForecast(range) {
+    // Map tab range to periods
+    const periods = { "24h": 1, "7d": 7, "30d": 30 }[range] || 7;
+    try {
+      const res  = await fetch(`${API}/api/forecast?seasonality=${seasonFactor}`);
+      const data = await res.json();
+
+      // Sum yhat across all facilities per date to get system-level demand
+      const byDate = {};
+      data.forecasts.forEach(f => {
+        const key = f.facility_id;
+        // We have one yhat per facility — aggregate across all
+      });
+
+      // Get unique facilities and build a per-day total
+      // The forecast endpoint returns one row per facility (latest yhat)
+      // Use yhat as daily demand per facility, scale across periods
+      const totalYhat      = data.forecasts.reduce((s, f) => s + f.yhat, 0);
+      const totalYhatLower = data.forecasts.reduce((s, f) => s + (f.yhat_lower || f.yhat * 0.85), 0);
+      const totalYhatUpper = data.forecasts.reduce((s, f) => s + (f.yhat_upper || f.yhat * 1.15), 0);
+
+      // Build labels and data points for the selected range
+      const today = new Date();
+      const labels = [];
+      const yhats  = [];
+      const lowers = [];
+      const uppers = [];
+
+      for (let i = 0; i < periods; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        labels.push(periods === 1
+          ? `${String(d.getHours()).padStart(2,'0')}:00`
+          : d.toLocaleDateString('en-JM', { month:'short', day:'numeric' })
+        );
+        // Add slight daily variation using sine wave
+        const variation = 1 + 0.05 * Math.sin((i / periods) * Math.PI * 2);
+        yhats.push(Math.round(totalYhat * variation));
+        lowers.push(Math.round(totalYhatLower * variation));
+        uppers.push(Math.round(totalYhatUpper * variation));
+      }
+
+      // For 24h show hourly pattern scaled to daily yhat
+      let finalLabels = labels, finalYhats = yhats, finalLowers = lowers, finalUppers = uppers;
+      if (range === "24h") {
+        const hourlyPattern = [0.55,0.52,0.48,0.46,0.46,0.50,0.58,0.70,0.82,0.92,0.98,1.0,1.0,1.02,1.01,0.99,0.96,0.92,0.88,0.82,0.76,0.70,0.64,0.58];
+        finalLabels  = hours;
+        finalYhats   = hourlyPattern.map(h => Math.round(totalYhat * h));
+        finalLowers  = hourlyPattern.map(h => Math.round(totalYhatLower * h));
+        finalUppers  = hourlyPattern.map(h => Math.round(totalYhatUpper * h));
+      }
+
+      forecastData[range] = { labels: finalLabels, yhats: finalYhats, lowers: finalLowers, uppers: finalUppers, total: totalYhat };
+
+      updateForecastChart(range);
+
+    } catch(err) {
+      console.error("Forecast API error:", err);
+    }
+  }
+
+  function updateForecastChart(range) {
+    const d = forecastData[range];
+    if (!d) return;
+    forecastChart.data.labels                  = d.labels;
+    forecastChart.data.datasets[0].data        = Array(d.labels.length).fill(capacityTotal);
+    forecastChart.data.datasets[1].data        = d.yhats;
+    forecastChart.data.datasets[2].data        = d.uppers;
+    forecastChart.data.datasets[3].data        = d.lowers;
+    forecastChart.update();
+
+    const peak = Math.max(...d.yhats);
+    const avg  = Math.round(d.yhats.reduce((a,b) => a+b, 0) / d.yhats.length);
+    const overflow = Math.max(0, peak - capacityTotal);
+    document.getElementById("fc-peak").textContent     = peak;
+    document.getElementById("fc-avg").textContent      = avg;
+    document.getElementById("fc-overflow").textContent = overflow;
+    if (overflow > 0) {
+      document.getElementById("fc-overflow").style.color = "var(--red)";
+    } else {
+      document.getElementById("fc-overflow").style.color = "var(--green)";
+    }
+  }
+
+  function setTab(el, range) {
+    document.querySelectorAll(".ftab").forEach(t => t.classList.remove("active"));
+    el.classList.add("active");
+    currentRange = range;
+    if (forecastData[range]) {
+      updateForecastChart(range);
+    } else {
+      fetchForecast(range);
+    }
+  }
+
+  /* ── Inflow chart ── */
+  const inflowChart = new Chart(document.getElementById("inflowChart"), {
+    type: "bar",
+    data: {
+      labels: hours,
+      datasets: [{ data: inflowBase.slice(), backgroundColor:"rgba(29,158,117,0.45)", borderColor:"#1D9E75", borderWidth:1, borderRadius:2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{ display:false } },
+      scales: {
+        x: { ticks:{ font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
+        y: { ticks:{ font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
+      }
+    }
+  });
+
+  function updateSeason(v) {
+    seasonFactor = parseFloat(v);
+    document.getElementById("season-val").textContent = seasonFactor.toFixed(1) + "×";
+    inflowChart.data.datasets[0].data = inflowBase.map(val => Math.round(val * seasonFactor));
+    inflowChart.update();
+    // Clear cached forecast data and re-fetch with new seasonality
+    forecastData = { "24h": null, "7d": null, "30d": null };
+    fetchForecast(currentRange);
+  }
+
   /* ── API fetch ── */
   async function fetchBeds() {
     try {
@@ -441,155 +590,6 @@
     await fetchBeds();
   }
   setInterval(refreshData, 30000);
-
-  /* ── Forecast chart ── */
-  // forecastData[range] stores real yhat sums fetched from /api/forecast
-  let forecastData = { "24h": null, "7d": null, "30d": null };
-  let currentRange = "24h";
-  let capacityTotal = 0;
-
-  const forecastChart = new Chart(document.getElementById("forecastChart"), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        { label: "Capacity",  data: [], borderColor: "#E24B4A", borderDash: [4,3], borderWidth: 1, pointRadius: 0, fill: false },
-        { label: "Forecast",  data: [], borderColor: "#1D9E75", borderWidth: 2, pointRadius: 0, fill: { target:"origin", above:"rgba(29,158,117,0.07)" }, tension: 0.4 },
-        { label: "Upper",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: false },
-        { label: "Lower",     data: [], borderColor: "rgba(29,158,117,0.2)", borderWidth: 1, pointRadius: 0, fill: "-1", backgroundColor: "rgba(29,158,117,0.07)" }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
-        y: { ticks: { font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
-      }
-    }
-  });
-
-  async function fetchForecast(range) {
-    // Map tab range to periods
-    const periods = { "24h": 1, "7d": 7, "30d": 30 }[range] || 7;
-    try {
-      const res  = await fetch();
-      const data = await res.json();
-
-      // Sum yhat across all facilities per date to get system-level demand
-      const byDate = {};
-      data.forecasts.forEach(f => {
-        const key = f.facility_id;
-        // We have one yhat per facility — aggregate across all
-      });
-
-      // Get unique facilities and build a per-day total
-      // The forecast endpoint returns one row per facility (latest yhat)
-      // Use yhat as daily demand per facility, scale across periods
-      const totalYhat      = data.forecasts.reduce((s, f) => s + f.yhat, 0);
-      const totalYhatLower = data.forecasts.reduce((s, f) => s + (f.yhat_lower || f.yhat * 0.85), 0);
-      const totalYhatUpper = data.forecasts.reduce((s, f) => s + (f.yhat_upper || f.yhat * 1.15), 0);
-
-      // Build labels and data points for the selected range
-      const today = new Date();
-      const labels = [];
-      const yhats  = [];
-      const lowers = [];
-      const uppers = [];
-
-      for (let i = 0; i < periods; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        labels.push(periods === 1
-          ? 
-          : d.toLocaleDateString("en-JM", { month:"short", day:"numeric" })
-        );
-        // Add slight daily variation using sine wave
-        const variation = 1 + 0.05 * Math.sin((i / periods) * Math.PI * 2);
-        yhats.push(Math.round(totalYhat * variation));
-        lowers.push(Math.round(totalYhatLower * variation));
-        uppers.push(Math.round(totalYhatUpper * variation));
-      }
-
-      // For 24h show hourly pattern scaled to daily yhat
-      let finalLabels = labels, finalYhats = yhats, finalLowers = lowers, finalUppers = uppers;
-      if (range === "24h") {
-        const hourlyPattern = [0.55,0.52,0.48,0.46,0.46,0.50,0.58,0.70,0.82,0.92,0.98,1.0,1.0,1.02,1.01,0.99,0.96,0.92,0.88,0.82,0.76,0.70,0.64,0.58];
-        finalLabels  = hours;
-        finalYhats   = hourlyPattern.map(h => Math.round(totalYhat * h));
-        finalLowers  = hourlyPattern.map(h => Math.round(totalYhatLower * h));
-        finalUppers  = hourlyPattern.map(h => Math.round(totalYhatUpper * h));
-      }
-
-      forecastData[range] = { labels: finalLabels, yhats: finalYhats, lowers: finalLowers, uppers: finalUppers, total: totalYhat };
-
-      updateForecastChart(range);
-
-    } catch(err) {
-      console.error("Forecast API error:", err);
-    }
-  }
-
-  function updateForecastChart(range) {
-    const d = forecastData[range];
-    if (!d) return;
-    forecastChart.data.labels                  = d.labels;
-    forecastChart.data.datasets[0].data        = Array(d.labels.length).fill(capacityTotal);
-    forecastChart.data.datasets[1].data        = d.yhats;
-    forecastChart.data.datasets[2].data        = d.uppers;
-    forecastChart.data.datasets[3].data        = d.lowers;
-    forecastChart.update();
-
-    const peak = Math.max(...d.yhats);
-    const avg  = Math.round(d.yhats.reduce((a,b) => a+b, 0) / d.yhats.length);
-    const overflow = Math.max(0, peak - capacityTotal);
-    document.getElementById("fc-peak").textContent     = peak;
-    document.getElementById("fc-avg").textContent      = avg;
-    document.getElementById("fc-overflow").textContent = overflow;
-    if (overflow > 0) {
-      document.getElementById("fc-overflow").style.color = "var(--red)";
-    } else {
-      document.getElementById("fc-overflow").style.color = "var(--green)";
-    }
-  }
-
-  function setTab(el, range) {
-    document.querySelectorAll(".ftab").forEach(t => t.classList.remove("active"));
-    el.classList.add("active");
-    currentRange = range;
-    if (forecastData[range]) {
-      updateForecastChart(range);
-    } else {
-      fetchForecast(range);
-    }
-  }
-
-  /* ── Inflow chart ── */
-  const inflowChart = new Chart(document.getElementById("inflowChart"), {
-    type: "bar",
-    data: {
-      labels: hours,
-      datasets: [{ data: inflowBase.slice(), backgroundColor:"rgba(29,158,117,0.45)", borderColor:"#1D9E75", borderWidth:1, borderRadius:2 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend:{ display:false } },
-      scales: {
-        x: { ticks:{ font:{size:9}, color:"#888", maxTicksLimit:8 }, grid:{ display:false } },
-        y: { ticks:{ font:{size:9}, color:"#888" }, grid:{ color:"rgba(128,128,128,0.1)" } }
-      }
-    }
-  });
-
-  function updateSeason(v) {
-    seasonFactor = parseFloat(v);
-    document.getElementById("season-val").textContent = seasonFactor.toFixed(1) + "×";
-    inflowChart.data.datasets[0].data = inflowBase.map(val => Math.round(val * seasonFactor));
-    inflowChart.update();
-    // Clear cached forecast data and re-fetch with new seasonality
-    forecastData = { "24h": null, "7d": null, "30d": null };
-    fetchForecast(currentRange);
-  }
 
   /* ── Role switcher ── */
   const roleConfig = {
