@@ -79,6 +79,28 @@
     .live-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--green); font-weight: 500; }
     .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* ── Optimization panel ─────────────────── */
+    .section { display: none; }
+    .section.active { display: flex; flex-direction: column; gap: 16px; }
+    .opt-controls { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .opt-field { display: flex; flex-direction: column; gap: 5px; }
+    .opt-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .opt-select { font-size: 13px; padding: 7px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-md); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; min-width: 140px; }
+    .opt-btn { padding: 8px 20px; border-radius: var(--radius-md); background: var(--green); color: white; border: none; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .opt-btn:hover { background: var(--green-dark); }
+    .opt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .opt-summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+    .opt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .opt-table th { text-align: left; font-size: 10px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px; border-bottom: 0.5px solid var(--border); }
+    .opt-table td { padding: 9px 10px; border-bottom: 0.5px solid var(--border); }
+    .opt-table tr:last-child td { border-bottom: none; }
+    .overflow-val { color: var(--red); font-weight: 500; }
+    .overflow-ok  { color: var(--green); }
+    .solver-badge { font-size: 11px; color: var(--text-tertiary); padding: 4px 10px; border-radius: 20px; border: 0.5px solid var(--border); }
+    .loading-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .time-label { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
     .refresh-btn { font-size: 12px; padding: 5px 14px; border-radius: var(--radius-md); background: transparent; border: 0.5px solid var(--border-md); color: var(--text-secondary); cursor: pointer; }
     .refresh-btn:hover { background: var(--bg-secondary); }
@@ -163,7 +185,7 @@
     </div>
 
     <div class="nav-section">Operations</div>
-    <div class="nav-item active">
+    <div class="nav-item active" onclick="showSection('overview', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Overview
     </div>
@@ -181,7 +203,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Demand Forecast
     </div>
-    <div class="nav-item">
+    <div class="nav-item" onclick="showSection('optimization', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
       Optimization
     </div>
@@ -223,6 +245,9 @@
     </div>
 
     <div class="content">
+
+      <!-- ── Overview section ── -->
+      <div class="section active" id="section-overview">
 
       <!-- Metric cards -->
       <div class="metric-row">
@@ -322,6 +347,96 @@
           <canvas id="inflowChart"></canvas>
         </div>
       </div>
+
+      </div><!-- #section-overview -->
+
+      <!-- ── Optimization section ── -->
+      <div class="section" id="section-optimization">
+
+        <!-- Controls -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">PuLP Bed Allocation Solver</div>
+            <span class="solver-badge" id="solver-badge">Idle</span>
+          </div>
+          <div class="opt-controls">
+            <div class="opt-field">
+              <label class="opt-label">Scenario</label>
+              <select class="opt-select" id="opt-scenario">
+                <option value="Normal">Normal</option>
+                <option value="FluSeason">Flu Season (+10%)</option>
+                <option value="Outbreak">Outbreak (+30%)</option>
+                <option value="Disaster">Disaster (+50%)</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">Optimisation Layer</label>
+              <select class="opt-select" id="opt-layer">
+                <option value="System">System</option>
+                <option value="Parish">Parish</option>
+                <option value="Facility">Facility</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">System Reserve</label>
+              <select class="opt-select" id="opt-reserve">
+                <option value="0.05">5%</option>
+                <option value="0.10" selected>10% (default)</option>
+                <option value="0.15">15%</option>
+                <option value="0.20">20%</option>
+              </select>
+            </div>
+            <button class="opt-btn" id="opt-run-btn" onclick="runOptimisation()">▶ Run Solver</button>
+          </div>
+        </div>
+
+        <!-- Summary metrics -->
+        <div class="opt-summary" id="opt-summary" style="display:none;">
+          <div class="metric-card">
+            <div class="metric-label">Scenario</div>
+            <div class="metric-value" style="font-size:18px;" id="opt-m-scenario">—</div>
+            <div class="metric-delta" id="opt-m-layer">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total Demand</div>
+            <div class="metric-value" style="font-size:18px;" id="opt-m-demand">—</div>
+            <div class="metric-delta">patients</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total Assigned</div>
+            <div class="metric-value" style="font-size:18px;" id="opt-m-assigned">—</div>
+            <div class="metric-delta delta-ok">beds allocated</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total Overflow</div>
+            <div class="metric-value" style="font-size:18px;" id="opt-m-overflow">—</div>
+            <div class="metric-delta delta-warn" id="opt-m-overflow-lbl">patients unmet</div>
+          </div>
+        </div>
+
+        <!-- Results table -->
+        <div class="card" id="opt-results-card" style="display:none;">
+          <div class="card-header">
+            <div class="card-title">Allocation Results</div>
+            <span style="font-size:11px;color:var(--text-tertiary);" id="opt-solver-msg"></span>
+          </div>
+          <table class="opt-table">
+            <thead>
+              <tr>
+                <th>Facility</th>
+                <th>Parish</th>
+                <th>Demand</th>
+                <th>Beds</th>
+                <th>Assigned</th>
+                <th>Overflow</th>
+                <th>Utilization</th>
+              </tr>
+            </thead>
+            <tbody id="opt-tbody"></tbody>
+          </table>
+        </div>
+
+      </div><!-- #section-optimization -->
 
     </div><!-- .content -->
   </div><!-- .main -->
@@ -610,10 +725,113 @@
     document.getElementById("role-display").textContent = roleLabels[role];
   }
 
+  /* ── Section switcher ── */
+  function showSection(name, navEl) {
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    document.getElementById("section-" + name).classList.add("active");
+    if (navEl) navEl.classList.add("active");
+
+    // Update topbar title
+    const titles = {
+      overview:     { title: "Operations Overview — Jamaica Hospital Network", sub: "All wards · Admissions, capacity & overflow risk" },
+      optimization: { title: "Bed Allocation Optimiser — PuLP Solver",         sub: "Scenario planning · Parish & system-level allocation" },
+    };
+    const t = titles[name] || titles.overview;
+    document.getElementById("page-title").textContent = t.title;
+    document.getElementById("page-sub").textContent   = t.sub;
+  }
+
+  /* ── Optimisation ── */
+  async function runOptimisation() {
+    const btn      = document.getElementById("opt-run-btn");
+    const badge    = document.getElementById("solver-badge");
+    const scenario = document.getElementById("opt-scenario").value;
+    const layer    = document.getElementById("opt-layer").value;
+    const reserve  = parseFloat(document.getElementById("opt-reserve").value);
+
+    btn.disabled   = true;
+    btn.innerHTML  = '<span class="loading-spinner"></span>Solving...';
+    badge.textContent = "Running";
+    badge.style.color = "var(--amber)";
+
+    try {
+      const res  = await fetch(`${API}/api/optimise`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ scenario, layer, system_reserve: reserve }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Solver error");
+      }
+
+      renderOptResults(data);
+      badge.textContent = "Optimal ✓";
+      badge.style.color = "var(--green)";
+
+    } catch (err) {
+      console.error("Optimisation error:", err);
+      badge.textContent = "Error";
+      badge.style.color = "var(--red)";
+      alert("Solver error: " + err.message);
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = "▶ Run Solver";
+    }
+  }
+
+  function renderOptResults(data) {
+    const allocs = data.allocations;
+
+    // Summary metrics
+    const totalDemand   = allocs.reduce((s, a) => s + a.demand,   0);
+    const totalAssigned = allocs.reduce((s, a) => s + a.assigned, 0);
+    const totalOverflow = data.total_overflow;
+
+    document.getElementById("opt-summary").style.display      = "grid";
+    document.getElementById("opt-results-card").style.display = "block";
+
+    document.getElementById("opt-m-scenario").textContent  = data.scenario;
+    document.getElementById("opt-m-layer").textContent     = data.layer + " layer";
+    document.getElementById("opt-m-demand").textContent    = Math.round(totalDemand);
+    document.getElementById("opt-m-assigned").textContent  = Math.round(totalAssigned);
+    document.getElementById("opt-m-overflow").textContent  = Math.round(totalOverflow);
+    document.getElementById("opt-solver-msg").textContent  = data.solver_message;
+
+    const overflowEl = document.getElementById("opt-m-overflow");
+    overflowEl.style.color = totalOverflow > 0 ? "var(--red)" : "var(--green)";
+
+    // Results table
+    const tbody = document.getElementById("opt-tbody");
+    tbody.innerHTML = allocs
+      .sort((a, b) => b.overflow - a.overflow)
+      .map(a => {
+        const util    = a.beds > 0 ? Math.round((a.assigned / a.beds) * 100) : 0;
+        const ovClass = a.overflow > 0 ? "overflow-val" : "overflow-ok";
+        const barColor = util >= 92 ? "#E24B4A" : util >= 80 ? "#EF9F27" : "#1D9E75";
+        return `<tr>
+          <td style="font-weight:500;">${a.name || a.facility_id}</td>
+          <td style="color:var(--text-secondary);">${a.parish || "—"}</td>
+          <td>${Math.round(a.demand)}</td>
+          <td>${a.beds}</td>
+          <td>${Math.round(a.assigned)}</td>
+          <td class="${ovClass}">${Math.round(a.overflow)}</td>
+          <td>
+            <div class="bar-wrap">
+              <div class="bar-track"><div class="bar-fill" style="width:${util}%;background:${barColor};"></div></div>
+              <span class="bar-pct">${util}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join("");
+  }
+
   /* ── Init ── */
   renderAlerts();
-  fetchBeds();        // load real bed data from API on startup
-  fetchForecast("24h"); // load real Prophet forecast on startup
+  fetchBeds();
+  fetchForecast("24h");
 </script>
 </body>
 </html>
