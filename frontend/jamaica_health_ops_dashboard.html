@@ -71,7 +71,7 @@
     .role-select { width: 100%; margin-top: 8px; font-size: 12px; padding: 5px 8px; border-radius: 6px; border: 0.5px solid var(--border); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; }
 
     /* ── Main ────────────────────────────────── */
-    .main { display: flex; flex-direction: column; overflow: hidden; }
+    .main { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     .topbar { background: var(--bg-primary); border-bottom: 0.5px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     .topbar-title { font-size: 15px; font-weight: 500; }
     .topbar-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
@@ -82,7 +82,7 @@
 
     /* ── Optimization panel ─────────────────── */
     .section { display: none; }
-    .section.active { display: flex; flex-direction: column; gap: 16px; }
+    .section.active { display: contents; }
     .opt-controls { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
     .opt-field { display: flex; flex-direction: column; gap: 5px; }
     .opt-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -105,7 +105,7 @@
     .refresh-btn { font-size: 12px; padding: 5px 14px; border-radius: var(--radius-md); background: transparent; border: 0.5px solid var(--border-md); color: var(--text-secondary); cursor: pointer; }
     .refresh-btn:hover { background: var(--bg-secondary); }
 
-    .content { flex: 1; padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .content { flex: 1; padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
 
     /* ── Metric cards ────────────────────────── */
     .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -189,9 +189,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Overview
     </div>
-    <div class="nav-item">
+    <div class="nav-item" onclick="showSection('beds', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Bed Management
+       Bed Management
     </div>
     <div class="nav-item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -249,111 +249,186 @@
       <!-- ── Overview section ── -->
       <div class="section active" id="section-overview">
 
-      <!-- Metric cards -->
-      <div class="metric-row">
-        <div class="metric-card">
-          <div class="metric-label">Total Beds</div>
-          <div class="metric-value" id="m-beds">—</div>
-          <div class="metric-delta" id="m-beds-sub">Loading...</div>
+        <!-- Metric cards -->
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="metric-label">Total Beds</div>
+            <div class="metric-value" id="m-beds">—</div>
+            <div class="metric-delta" id="m-beds-sub">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Occupied</div>
+            <div class="metric-value" id="m-occ">—</div>
+            <div class="metric-delta delta-warn" id="m-occ-pct">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Available</div>
+            <div class="metric-value" id="m-avail">—</div>
+            <div class="metric-delta delta-ok" id="m-avail-sub">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Overflow Risk</div>
+            <div class="metric-value delta-warn" id="m-risk">—</div>
+            <div class="metric-delta delta-warn" id="m-risk-sub">Loading...</div>
+          </div>
         </div>
-        <div class="metric-card">
-          <div class="metric-label">Occupied</div>
-          <div class="metric-value" id="m-occ">—</div>
-          <div class="metric-delta delta-warn" id="m-occ-pct">Loading...</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Available</div>
-          <div class="metric-value" id="m-avail">—</div>
-          <div class="metric-delta delta-ok" id="m-avail-sub">Loading...</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Overflow Risk</div>
-          <div class="metric-value delta-warn" id="m-risk">—</div>
-          <div class="metric-delta delta-warn" id="m-risk-sub">Loading...</div>
-        </div>
-      </div>
 
-      <!-- Facility table + Alerts/Forecast -->
-      <div class="grid-2">
+        <!-- Facility table + Alerts/Forecast -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Facility Bed Utilization</div>
+              <div class="card-action">Export CSV ↓</div>
+            </div>
+            <table class="facility-table">
+              <thead>
+                <tr>
+                  <th>Facility</th>
+                  <th>Parish</th>
+                  <th>Utilization</th>
+                  <th>Beds</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="facility-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="card" style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+              <div class="card-header" style="margin-bottom:10px;">
+                <div class="card-title">Active Alerts</div>
+                <span style="font-size:11px; color:var(--text-tertiary);" id="alert-count">4 alerts</span>
+              </div>
+              <div class="alert-list" id="alert-list"></div>
+            </div>
+            <div>
+              <div class="card-title" style="margin-bottom:10px;">24hr Demand Forecast</div>
+              <div class="forecast-tabs">
+                <button class="ftab active" onclick="setTab(this,'24h')">24h</button>
+                <button class="ftab" onclick="setTab(this,'7d')">7 days</button>
+                <button class="ftab" onclick="setTab(this,'30d')">30 days</button>
+              </div>
+              <div style="position:relative; height:130px;">
+                <canvas id="forecastChart"></canvas>
+              </div>
+              <div class="mini-stat-row">
+                <div class="mini-stat">
+                  <div class="mini-stat-val" id="fc-peak">712</div>
+                  <div class="mini-stat-lbl">Peak demand</div>
+                </div>
+                <div class="mini-stat">
+                  <div class="mini-stat-val" id="fc-avg">681</div>
+                  <div class="mini-stat-lbl">Avg demand</div>
+                </div>
+                <div class="mini-stat">
+                  <div class="mini-stat-val mini-stat-overflow" id="fc-overflow">0</div>
+                  <div class="mini-stat-lbl">Est. overflow</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inflow chart -->
+        <div class="card">
+          <div class="inflow-header">
+            <div class="card-title">Inflow rate — admissions per hour (Poisson simulation)</div>
+            <div class="slider-group">
+              <label>Seasonality factor</label>
+              <input type="range" min="0.5" max="2" step="0.1" value="1" id="season-slider" oninput="updateSeason(this.value)">
+              <span class="slider-val" id="season-val">1.0×</span>
+            </div>
+          </div>
+          <div style="position:relative; height:110px;">
+            <canvas id="inflowChart"></canvas>
+          </div>
+        </div>
+
+      </div><!-- #section-overview -->
+
+      <!-- ── Bed Management section ── -->
+      <div class="section" id="section-beds">
+
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="metric-label">Total Beds</div>
+            <div class="metric-value" id="bm-total">—</div>
+            <div class="metric-delta" id="bm-facilities">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Occupied</div>
+            <div class="metric-value" id="bm-occupied">—</div>
+            <div class="metric-delta delta-warn" id="bm-util">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Available</div>
+            <div class="metric-value" id="bm-available">—</div>
+            <div class="metric-delta delta-ok" id="bm-headroom">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Critical Facilities</div>
+            <div class="metric-value delta-warn" id="bm-critical">—</div>
+            <div class="metric-delta delta-warn" id="bm-critical-lbl">Loading...</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:12px 18px;">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="opt-field">
+              <label class="opt-label">Filter by Parish</label>
+              <select class="opt-select" id="bm-parish-filter" onchange="filterBedTable()">
+                <option value="all">All Parishes</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">Filter by Status</label>
+              <select class="opt-select" id="bm-status-filter" onchange="filterBedTable()">
+                <option value="all">All</option>
+                <option value="critical">Critical</option>
+                <option value="warning">Warning</option>
+                <option value="stable">Stable</option>
+              </select>
+            </div>
+            <div class="opt-field" style="margin-left:auto;">
+              <label class="opt-label">Sort by</label>
+              <select class="opt-select" id="bm-sort" onchange="filterBedTable()">
+                <option value="util-desc">Utilization (High → Low)</option>
+                <option value="util-asc">Utilization (Low → High)</option>
+                <option value="name">Name (A → Z)</option>
+                <option value="available">Most Available Beds</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Facility Bed Utilization</div>
-            <div class="card-action">Export CSV ↓</div>
+            <div class="card-title">All Facilities — Bed Status</div>
+            <span style="font-size:11px;color:var(--text-tertiary);" id="bm-last-updated">—</span>
           </div>
-          <table class="facility-table">
+          <table class="opt-table">
             <thead>
               <tr>
                 <th>Facility</th>
                 <th>Parish</th>
+                <th>Health Region</th>
+                <th>Total Beds</th>
+                <th>Occupied</th>
+                <th>Available</th>
                 <th>Utilization</th>
-                <th>Beds</th>
                 <th>Status</th>
               </tr>
             </thead>
-            <tbody id="facility-tbody"></tbody>
+            <tbody id="bm-tbody"></tbody>
           </table>
         </div>
 
-        <div class="card" style="display:flex; flex-direction:column; gap:16px;">
-          <!-- Alerts -->
-          <div>
-            <div class="card-header" style="margin-bottom:10px;">
-              <div class="card-title">Active Alerts</div>
-              <span style="font-size:11px; color:var(--text-tertiary);" id="alert-count">4 alerts</span>
-            </div>
-            <div class="alert-list" id="alert-list"></div>
-          </div>
-
-          <!-- Forecast -->
-          <div>
-            <div class="card-title" style="margin-bottom:10px;">24hr Demand Forecast</div>
-            <div class="forecast-tabs">
-              <button class="ftab active" onclick="setTab(this,'24h')">24h</button>
-              <button class="ftab" onclick="setTab(this,'7d')">7 days</button>
-              <button class="ftab" onclick="setTab(this,'30d')">30 days</button>
-            </div>
-            <div style="position:relative; height:130px;">
-              <canvas id="forecastChart"></canvas>
-            </div>
-            <div class="mini-stat-row">
-              <div class="mini-stat">
-                <div class="mini-stat-val" id="fc-peak">712</div>
-                <div class="mini-stat-lbl">Peak demand</div>
-              </div>
-              <div class="mini-stat">
-                <div class="mini-stat-val" id="fc-avg">681</div>
-                <div class="mini-stat-lbl">Avg demand</div>
-              </div>
-              <div class="mini-stat">
-                <div class="mini-stat-val mini-stat-overflow" id="fc-overflow">0</div>
-                <div class="mini-stat-lbl">Est. overflow</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Inflow chart -->
-      <div class="card">
-        <div class="inflow-header">
-          <div class="card-title">Inflow rate — admissions per hour (Poisson simulation)</div>
-          <div class="slider-group">
-            <label>Seasonality factor</label>
-            <input type="range" min="0.5" max="2" step="0.1" value="1" id="season-slider" oninput="updateSeason(this.value)">
-            <span class="slider-val" id="season-val">1.0×</span>
-          </div>
-        </div>
-        <div style="position:relative; height:110px;">
-          <canvas id="inflowChart"></canvas>
-        </div>
-      </div>
-
-      </div><!-- #section-overview -->
+      </div><!-- #section-beds -->
 
       <!-- ── Optimization section ── -->
       <div class="section" id="section-optimization">
 
-        <!-- Controls -->
         <div class="card">
           <div class="card-header">
             <div class="card-title">PuLP Bed Allocation Solver</div>
@@ -390,7 +465,6 @@
           </div>
         </div>
 
-        <!-- Summary metrics -->
         <div class="opt-summary" id="opt-summary" style="display:none;">
           <div class="metric-card">
             <div class="metric-label">Scenario</div>
@@ -414,7 +488,6 @@
           </div>
         </div>
 
-        <!-- Results table -->
         <div class="card" id="opt-results-card" style="display:none;">
           <div class="card-header">
             <div class="card-title">Allocation Results</div>
@@ -441,6 +514,7 @@
     </div><!-- .content -->
   </div><!-- .main -->
 </div><!-- .dash -->
+
 
 <script>
   /* ── Config ── */
@@ -606,6 +680,74 @@
     forecastData = { "24h": null, "7d": null, "30d": null };
     fetchForecast(currentRange);
   }
+  
+    /* ── Bed Management ── */
+let allBedFacilities = [];
+
+function renderBedManagement(data) {
+  allBedFacilities = data.facilities;
+
+  // Summary metrics
+  document.getElementById("bm-total").textContent     = data.total_beds;
+  document.getElementById("bm-occupied").textContent  = data.total_occupied;
+  document.getElementById("bm-available").textContent = data.total_available;
+  document.getElementById("bm-critical").textContent  = data.critical_count;
+  document.getElementById("bm-util").textContent      = `${Math.round(data.system_utilization_pct * 100)}% utilization`;
+  document.getElementById("bm-headroom").textContent  = `${Math.round((1 - data.system_utilization_pct) * 100)}% headroom`;
+  document.getElementById("bm-facilities").textContent = `Across ${data.facilities.length} facilities`;
+  document.getElementById("bm-critical-lbl").textContent = data.critical_count > 0 ? "Need attention" : "All stable";
+  document.getElementById("bm-last-updated").textContent = `Updated ${new Date().toLocaleTimeString("en-JM")}`;
+
+  // Populate parish filter
+  const parishes = [...new Set(data.facilities.map(f => f.parish).filter(Boolean))].sort();
+  const parishSelect = document.getElementById("bm-parish-filter");
+  parishSelect.innerHTML = '<option value="all">All Parishes</option>' +
+    parishes.map(p => `<option value="${p}">${p}</option>`).join("");
+
+  filterBedTable();
+}
+
+function filterBedTable() {
+  const parish = document.getElementById("bm-parish-filter").value;
+  const status = document.getElementById("bm-status-filter").value;
+  const sort   = document.getElementById("bm-sort").value;
+
+  let rows = allBedFacilities.filter(f => {
+    if (parish !== "all" && f.parish !== parish) return false;
+    if (status !== "all" && f.rag_status !== status) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    if (sort === "util-desc") return b.utilization_pct - a.utilization_pct;
+    if (sort === "util-asc")  return a.utilization_pct - b.utilization_pct;
+    if (sort === "name")      return a.name.localeCompare(b.name);
+    if (sort === "available") return b.available_beds - a.available_beds;
+    return 0;
+  });
+
+  const tbody = document.getElementById("bm-tbody");
+  tbody.innerHTML = rows.map(f => {
+    const pct      = Math.round(f.utilization_pct * 100);
+    const color    = f.rag_status === "critical" ? "#E24B4A" : f.rag_status === "warning" ? "#EF9F27" : "#1D9E75";
+    const pillText = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.rag_status] || f.rag_status;
+    return `<tr>
+      <td style="font-weight:500;">${f.name}</td>
+      <td style="color:var(--text-secondary);">${f.parish}</td>
+      <td style="color:var(--text-secondary);">${f.health_region}</td>
+      <td>${f.total_beds}</td>
+      <td>${f.occupied_beds}</td>
+      <td style="color:var(--green);">${f.available_beds}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+          <span class="bar-pct">${pct}%</span>
+        </div>
+      </td>
+      <td><span class="status-pill status-${f.rag_status}">${pillText}</span></td>
+    </tr>`;
+  }).join("");
+}
 
   /* ── API fetch ── */
   async function fetchBeds() {
@@ -634,6 +776,8 @@
       document.getElementById("m-risk-sub").textContent = data.critical_count > 0 ? "Facilities critical" : "All stable";
 
       renderFacilities();
+      renderBedManagement(data);
+
 
       // Add alert if any critical
       if (data.critical_count > 0) {
@@ -725,23 +869,22 @@
     document.getElementById("role-display").textContent = roleLabels[role];
   }
 
-  /* ── Section switcher ── */
-  function showSection(name, navEl) {
+/* ── Section switcher ── */
+function showSection(name, navEl) {
     document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
     document.getElementById("section-" + name).classList.add("active");
     if (navEl) navEl.classList.add("active");
 
-    // Update topbar title
     const titles = {
-      overview:     { title: "Operations Overview — Jamaica Hospital Network", sub: "All wards · Admissions, capacity & overflow risk" },
-      optimization: { title: "Bed Allocation Optimiser — PuLP Solver",         sub: "Scenario planning · Parish & system-level allocation" },
+      overview:     { title: "Operations Overview — Jamaica Hospital Network",  sub: "All wards · Admissions, capacity & overflow risk" },
+      optimization: { title: "Bed Allocation Optimiser — PuLP Solver",          sub: "Scenario planning · Parish & system-level allocation" },
+      beds:         { title: "Bed Management — Jamaica Hospital Network",        sub: "Real-time monitoring · Parish & facility-level bed status" }
     };
     const t = titles[name] || titles.overview;
     document.getElementById("page-title").textContent = t.title;
     document.getElementById("page-sub").textContent   = t.sub;
-  }
-
+}
   /* ── Optimisation ── */
   async function runOptimisation() {
     const btn      = document.getElementById("opt-run-btn");
