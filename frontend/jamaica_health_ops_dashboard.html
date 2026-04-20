@@ -193,7 +193,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
        Bed Management
     </div>
-    <div class="nav-item">
+    <div class="nav-item" onclick="showSection('admissions', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Live Admissions
     </div>
@@ -425,6 +425,112 @@
         </div>
 
       </div><!-- #section-beds -->
+
+      <!-- ── Live Admissions section ── -->
+      <div class="section" id="section-admissions">
+
+        <!-- Summary row -->
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="metric-label">Total Arrivals Today</div>
+            <div class="metric-value" id="la-total">—</div>
+            <div class="metric-delta" id="la-total-sub">Loading...</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">ER Arrivals</div>
+            <div class="metric-value" id="la-er">—</div>
+            <div class="metric-delta delta-warn">Emergency</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">ICU Arrivals</div>
+            <div class="metric-value" id="la-icu">—</div>
+            <div class="metric-delta">Critical care</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Maternity Arrivals</div>
+            <div class="metric-value" id="la-maternity">—</div>
+            <div class="metric-delta delta-ok">Maternity ward</div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="card" style="padding:12px 18px;">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="opt-field">
+              <label class="opt-label">Facility</label>
+              <select class="opt-select" id="la-facility-filter" onchange="fetchAdmissions()">
+                <option value="">All Facilities</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">Department</label>
+              <select class="opt-select" id="la-dept-filter" onchange="renderAdmissionsTable()">
+                <option value="all">All Departments</option>
+                <option value="ER">ER</option>
+                <option value="ICU">ICU</option>
+                <option value="Maternity">Maternity</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">Seasonality</label>
+              <select class="opt-select" id="la-season" onchange="fetchAdmissions()">
+                <option value="1.0">Normal (1.0×)</option>
+                <option value="1.3">Feb Surge (1.3×)</option>
+                <option value="1.2">Mar Surge (1.2×)</option>
+                <option value="0.9">Apr Low (0.9×)</option>
+              </select>
+            </div>
+            <div class="opt-field" style="margin-left:auto;">
+              <label class="opt-label">&nbsp;</label>
+              <button class="opt-btn" onclick="fetchAdmissions()">↺ Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Department breakdown chart -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Arrivals by Department</div>
+              <span style="font-size:11px;color:var(--text-tertiary);" id="la-chart-sub">All facilities</span>
+            </div>
+            <div style="position:relative; height:200px;">
+              <canvas id="admissionsChart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Top Facilities by Arrivals</div>
+            </div>
+            <div style="position:relative; height:200px;">
+              <canvas id="facilityArrivalsChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admissions table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Facility Admission Details</div>
+            <span style="font-size:11px;color:var(--text-tertiary);" id="la-last-updated">—</span>
+          </div>
+          <table class="opt-table">
+            <thead>
+              <tr>
+                <th>Facility</th>
+                <th>Date</th>
+                <th>ER</th>
+                <th>ICU</th>
+                <th>Maternity</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="la-tbody"></tbody>
+          </table>
+        </div>
+
+      </div><!-- #section-admissions -->
 
       <!-- ── Optimization section ── -->
       <div class="section" id="section-optimization">
@@ -687,6 +793,144 @@ let allBedFacilities = [];
 function renderBedManagement(data) {
   allBedFacilities = data.facilities;
 
+/* ── Live Admissions ── */
+let admissionsData = [];
+
+async function fetchAdmissions() {
+  const facility   = document.getElementById("la-facility-filter").value;
+  const seasonality = document.getElementById("la-season").value;
+
+  try {
+    const params = new URLSearchParams({ seasonality });
+    if (facility) params.append("facility_id", facility);
+
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - 6);
+    params.append("start_date", start.toISOString().split("T")[0]);
+    params.append("end_date",   today.toISOString().split("T")[0]);
+
+    const res  = await fetch(`${API}/api/inflow?${params}`);
+    const data = await res.json();
+
+    admissionsData = data.records;
+    renderAdmissions();
+
+  } catch(err) {
+    console.error("Admissions API error:", err);
+  }
+}
+
+function renderAdmissions() {
+  if (!admissionsData.length) return;
+
+  // Aggregate totals across all records
+  let totalER = 0, totalICU = 0, totalMat = 0;
+  const facilityTotals = {};
+
+  admissionsData.forEach(r => {
+    r.departments.forEach(d => {
+      if (d.department === "ER")       totalER  += d.arrivals;
+      if (d.department === "ICU")      totalICU += d.arrivals;
+      if (d.department === "Maternity") totalMat += d.arrivals;
+    });
+    if (!facilityTotals[r.facility_id]) facilityTotals[r.facility_id] = 0;
+    facilityTotals[r.facility_id] += r.total_arrivals;
+  });
+
+  const grandTotal = totalER + totalICU + totalMat;
+
+  // Update summary cards
+  document.getElementById("la-total").textContent      = Math.round(grandTotal);
+  document.getElementById("la-total-sub").textContent  = `Last 7 days · ${admissionsData.length} records`;
+  document.getElementById("la-er").textContent         = Math.round(totalER);
+  document.getElementById("la-icu").textContent        = Math.round(totalICU);
+  document.getElementById("la-maternity").textContent  = Math.round(totalMat);
+  document.getElementById("la-last-updated").textContent = `Updated ${new Date().toLocaleTimeString("en-JM")}`;
+
+  // Department breakdown chart
+  const deptChart = Chart.getChart("admissionsChart");
+  if (deptChart) deptChart.destroy();
+  new Chart(document.getElementById("admissionsChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["ER", "ICU", "Maternity"],
+      datasets: [{
+        data: [Math.round(totalER), Math.round(totalICU), Math.round(totalMat)],
+        backgroundColor: ["#E24B4A", "#EF9F27", "#1D9E75"],
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "right", labels: { font: { size: 11 }, color: "#888" } } }
+    }
+  });
+
+  // Top facilities chart
+  const sorted = Object.entries(facilityTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+
+  const facChart = Chart.getChart("facilityArrivalsChart");
+  if (facChart) facChart.destroy();
+  new Chart(document.getElementById("facilityArrivalsChart"), {
+    type: "bar",
+    data: {
+      labels: sorted.map(([id]) => id),
+      datasets: [{
+        data: sorted.map(([, v]) => Math.round(v)),
+        backgroundColor: "rgba(29,158,117,0.5)",
+        borderColor: "#1D9E75",
+        borderWidth: 1,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 9 }, color: "#888" }, grid: { display: false } },
+        y: { ticks: { font: { size: 9 }, color: "#888" }, grid: { color: "rgba(128,128,128,0.1)" } }
+      }
+    }
+  });
+
+  renderAdmissionsTable();
+}
+
+function renderAdmissionsTable() {
+  const deptFilter = document.getElementById("la-dept-filter").value;
+
+  // Group by facility, sum across dates
+  const byFacility = {};
+  admissionsData.forEach(r => {
+    if (!byFacility[r.facility_id]) {
+      byFacility[r.facility_id] = { facility_id: r.facility_id, date: r.date, ER: 0, ICU: 0, Maternity: 0, total: 0 };
+    }
+    r.departments.forEach(d => {
+      if (byFacility[r.facility_id][d.department] !== undefined) {
+        byFacility[r.facility_id][d.department] += d.arrivals;
+      }
+    });
+    byFacility[r.facility_id].total += r.total_arrivals;
+  });
+
+  const rows = Object.values(byFacility).sort((a, b) => b.total - a.total);
+
+  const tbody = document.getElementById("la-tbody");
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight:500;">${r.facility_id}</td>
+      <td style="color:var(--text-secondary);">Last 7 days</td>
+      <td>${deptFilter === "all" || deptFilter === "ER"       ? Math.round(r.ER)       : "—"}</td>
+      <td>${deptFilter === "all" || deptFilter === "ICU"      ? Math.round(r.ICU)      : "—"}</td>
+      <td>${deptFilter === "all" || deptFilter === "Maternity"? Math.round(r.Maternity): "—"}</td>
+      <td style="font-weight:500;">${Math.round(r.total)}</td>
+    </tr>
+  `).join("");
+}
+
   // Summary metrics
   document.getElementById("bm-total").textContent     = data.total_beds;
   document.getElementById("bm-occupied").textContent  = data.total_occupied;
@@ -777,7 +1021,13 @@ function filterBedTable() {
 
       renderFacilities();
       renderBedManagement(data);
-
+      
+      // Populate Live Admissions facility dropdown
+       const laSelect = document.getElementById("la-facility-filter");
+       if (laSelect) {
+      laSelect.innerHTML = '<option value="">All Facilities</option>' +
+      data.facilities.map(f => `<option value="${f.facility_code}">${f.name}</option>`).join("");
+      }
 
       // Add alert if any critical
       if (data.critical_count > 0) {
@@ -875,11 +1125,13 @@ function showSection(name, navEl) {
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
     document.getElementById("section-" + name).classList.add("active");
     if (navEl) navEl.classList.add("active");
+    if (name === "admissions" && !admissionsData.length) fetchAdmissions();
 
     const titles = {
       overview:     { title: "Operations Overview — Jamaica Hospital Network",  sub: "All wards · Admissions, capacity & overflow risk" },
       optimization: { title: "Bed Allocation Optimiser — PuLP Solver",          sub: "Scenario planning · Parish & system-level allocation" },
-      beds:         { title: "Bed Management — Jamaica Hospital Network",        sub: "Real-time monitoring · Parish & facility-level bed status" }
+      beds:         { title: "Bed Management — Jamaica Hospital Network",        sub: "Real-time monitoring · Parish & facility-level bed status" },
+      admissions: { title: "Live Admissions — Inflow Monitor", sub: "ER · ICU · Maternity · Poisson arrival simulation" },
     };
     const t = titles[name] || titles.overview;
     document.getElementById("page-title").textContent = t.title;
