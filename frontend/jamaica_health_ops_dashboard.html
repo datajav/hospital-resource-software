@@ -207,7 +207,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
       Optimization
     </div>
-    <div class="nav-item">
+    <div class="nav-item" onclick="showSection('reports', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Reports
     </div>
@@ -704,6 +704,56 @@
   </div><!-- .main -->
 </div><!-- .dash -->
 
+<!-- ── Reports section ── -->
+      <div class="section" id="section-reports">
+
+        <!-- Export cards -->
+        <div class="metric-row">
+          <div class="metric-card" style="cursor:pointer;" onclick="exportCSV('beds')">
+            <div class="metric-label">Bed Status Report</div>
+            <div class="metric-value" style="font-size:20px;">⬇</div>
+            <div class="metric-delta">All facilities · occupancy & utilization</div>
+          </div>
+          <div class="metric-card" style="cursor:pointer;" onclick="exportCSV('forecast')">
+            <div class="metric-label">Forecast Report</div>
+            <div class="metric-value" style="font-size:20px;">⬇</div>
+            <div class="metric-delta">Prophet yhat · all facilities</div>
+          </div>
+          <div class="metric-card" style="cursor:pointer;" onclick="exportCSV('admissions')">
+            <div class="metric-label">Admissions Report</div>
+            <div class="metric-value" style="font-size:20px;">⬇</div>
+            <div class="metric-delta">ER · ICU · Maternity · last 7 days</div>
+          </div>
+          <div class="metric-card" style="cursor:pointer;" onclick="exportCSV('full')">
+            <div class="metric-label">Full System Report</div>
+            <div class="metric-value" style="font-size:20px;">⬇</div>
+            <div class="metric-delta">All data combined · single CSV</div>
+          </div>
+        </div>
+
+        <!-- Report preview table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" id="report-title">Bed Status Report</div>
+            <div style="display:flex; gap:8px;">
+              <select class="opt-select" id="report-type" onchange="renderReportPreview()">
+                <option value="beds">Bed Status</option>
+                <option value="forecast">Forecast</option>
+                <option value="admissions">Admissions</option>
+                <option value="full">Full System</option>
+              </select>
+              <button class="opt-btn" onclick="exportCSV(document.getElementById('report-type').value)">↓ Download CSV</button>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:12px;" id="report-meta">—</div>
+          <table class="opt-table" id="report-table">
+            <thead id="report-thead"></thead>
+            <tbody id="report-tbody"></tbody>
+          </table>
+        </div>
+
+      </div><!-- #section-reports -->
+
 
 <script>
   /* ── Config ── */
@@ -875,6 +925,115 @@ function renderFacilityForecast() {
       }
     }
   });
+}
+
+/* ── Reports ── */
+function renderReportPreview() {
+  const type = document.getElementById("report-type").value;
+  const titles = {
+    beds:       "Bed Status Report",
+    forecast:   "Forecast Report",
+    admissions: "Admissions Report",
+    full:       "Full System Report",
+  };
+  document.getElementById("report-title").textContent = titles[type];
+
+  const thead = document.getElementById("report-thead");
+  const tbody = document.getElementById("report-tbody");
+  const meta  = document.getElementById("report-meta");
+
+  if (type === "beds") {
+    const data = window._bedsData;
+    if (!data) { meta.textContent = "No data loaded yet."; return; }
+    meta.textContent = `${data.facilities.length} facilities · Generated ${new Date().toLocaleString("en-JM")}`;
+    thead.innerHTML = `<tr>${["Facility","Parish","Health Region","Total Beds","Occupied","Available","Utilization %","Status"].map(h=>`<th>${h}</th>`).join("")}</tr>`;
+    tbody.innerHTML = data.facilities.map(f => `<tr>
+      <td style="font-weight:500;">${f.name}</td>
+      <td>${f.parish}</td>
+      <td>${f.health_region}</td>
+      <td>${f.total_beds}</td>
+      <td>${f.occupied_beds}</td>
+      <td>${f.available_beds}</td>
+      <td>${Math.round(f.utilization_pct * 100)}%</td>
+      <td><span class="status-pill status-${f.rag_status}">${f.rag_status}</span></td>
+    </tr>`).join("");
+
+  } else if (type === "forecast") {
+    if (!forecastSummary.length) { meta.textContent = "No forecast data loaded yet."; return; }
+    meta.textContent = `${forecastSummary.length} facilities · Generated ${new Date().toLocaleString("en-JM")}`;
+    thead.innerHTML = `<tr>${["Facility","Parish","Beds","yhat (daily)","Lower CI","Upper CI"].map(h=>`<th>${h}</th>`).join("")}</tr>`;
+    tbody.innerHTML = forecastSummary.map(f => `<tr>
+      <td style="font-weight:500;">${f.name || f.facility_id}</td>
+      <td>${f.parish || "—"}</td>
+      <td>${f.beds}</td>
+      <td>${Math.round(f.yhat)}</td>
+      <td>${Math.round(f.yhat_lower || f.yhat * 0.85)}</td>
+      <td>${Math.round(f.yhat_upper || f.yhat * 1.15)}</td>
+    </tr>`).join("");
+
+  } else if (type === "admissions") {
+    if (!admissionsData.length) { meta.textContent = "No admissions data loaded yet."; return; }
+    const byFac = {};
+    admissionsData.forEach(r => {
+      if (!byFac[r.facility_id]) byFac[r.facility_id] = { ER:0, ICU:0, Maternity:0, total:0 };
+      r.departments.forEach(d => { if (byFac[r.facility_id][d.department] !== undefined) byFac[r.facility_id][d.department] += d.arrivals; });
+      byFac[r.facility_id].total += r.total_arrivals;
+    });
+    meta.textContent = `${Object.keys(byFac).length} facilities · Last 7 days · Generated ${new Date().toLocaleString("en-JM")}`;
+    thead.innerHTML = `<tr>${["Facility","ER Arrivals","ICU Arrivals","Maternity Arrivals","Total"].map(h=>`<th>${h}</th>`).join("")}</tr>`;
+    tbody.innerHTML = Object.entries(byFac).sort((a,b)=>b[1].total-a[1].total).map(([id,v]) => `<tr>
+      <td style="font-weight:500;">${id}</td>
+      <td>${Math.round(v.ER)}</td>
+      <td>${Math.round(v.ICU)}</td>
+      <td>${Math.round(v.Maternity)}</td>
+      <td style="font-weight:500;">${Math.round(v.total)}</td>
+    </tr>`).join("");
+
+  } else if (type === "full") {
+    const data = window._bedsData;
+    if (!data || !forecastSummary.length) { meta.textContent = "Load all sections first."; return; }
+    meta.textContent = `${data.facilities.length} facilities · Generated ${new Date().toLocaleString("en-JM")}`;
+    thead.innerHTML = `<tr>${["Facility","Parish","Total Beds","Occupied","Available","Util %","Status","yhat","Lower CI","Upper CI"].map(h=>`<th>${h}</th>`).join("")}</tr>`;
+    tbody.innerHTML = data.facilities.map(f => {
+      const fc = forecastSummary.find(x => x.facility_id === f.facility_code) || {};
+      return `<tr>
+        <td style="font-weight:500;">${f.name}</td>
+        <td>${f.parish}</td>
+        <td>${f.total_beds}</td>
+        <td>${f.occupied_beds}</td>
+        <td>${f.available_beds}</td>
+        <td>${Math.round(f.utilization_pct * 100)}%</td>
+        <td><span class="status-pill status-${f.rag_status}">${f.rag_status}</span></td>
+        <td>${fc.yhat ? Math.round(fc.yhat) : "—"}</td>
+        <td>${fc.yhat_lower ? Math.round(fc.yhat_lower) : "—"}</td>
+        <td>${fc.yhat_upper ? Math.round(fc.yhat_upper) : "—"}</td>
+      </tr>`;
+    }).join("");
+  }
+}
+
+function exportCSV(type) {
+  document.getElementById("report-type").value = type;
+  renderReportPreview();
+
+  const thead = document.getElementById("report-thead");
+  const tbody = document.getElementById("report-tbody");
+  if (!tbody.innerHTML) return;
+
+  const headers = [...thead.querySelectorAll("th")].map(th => th.textContent);
+  const rows    = [...tbody.querySelectorAll("tr")].map(tr =>
+    [...tr.querySelectorAll("td")].map(td => `"${td.textContent.trim()}"`)
+  );
+
+  const csv      = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob     = new Blob([csv], { type: "text/csv" });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement("a");
+  const filename = `caremetrics_${type}_${new Date().toISOString().split("T")[0]}.csv`;
+  a.href         = url;
+  a.download     = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
   /* ── Forecast chart ── */
@@ -1250,6 +1409,7 @@ function filterBedTable() {
       }));
 
       totalBeds = data.total_beds;
+      window._bedsData = data;
 
       // Update summary metrics from API
       document.getElementById("m-beds").textContent   = data.total_beds;
@@ -1362,6 +1522,7 @@ function filterBedTable() {
     ministry: { title:"National Overview — Jamaica Hospital Network",   sub:"Ministry of Health · All 6 facilities across parishes" },
     analyst:  { title:"Model Outputs — Prophet + PuLP",                 sub:"Forecast accuracy · Solver logs · Raw data export" },
     forecast: { title: "Demand Forecast — Prophet Models", sub: "Facility-level yhat · 30-day horizon · Confidence intervals" },
+    reports: { title: "Reports — Data Export", sub: "Download facility data as CSV" },
   };
   const roleLabels = {
     admin:"Hospital Administrator", ward:"Ward / Clinical Staff",
@@ -1383,6 +1544,7 @@ function showSection(name, navEl) {
     if (navEl) navEl.classList.add("active");
     if (name === "admissions" && !admissionsData.length) fetchAdmissions();
     if (name === "forecast" && !forecastSummary.length) fetchForecast("24h");
+    if (name === "reports") renderReportPreview();
 
     const titles = {
       overview:     { title: "Operations Overview — Jamaica Hospital Network",  sub: "All wards · Admissions, capacity & overflow risk" },
