@@ -199,9 +199,10 @@
     </div>
 
     <div class="nav-section">Analytics</div>
-    <div class="nav-item">
+    <div class="nav-item" onclick="showSection('forecast', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Demand Forecast
+    </div>
     </div>
     <div class="nav-item" onclick="showSection('optimization', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
@@ -532,6 +533,89 @@
 
       </div><!-- #section-admissions -->
 
+      <!-- ── Demand Forecast section ── -->
+      <div class="section" id="section-forecast">
+
+        <!-- Controls -->
+        <div class="card" style="padding:12px 18px;">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="opt-field">
+              <label class="opt-label">Facility</label>
+              <select class="opt-select" id="df-facility" onchange="renderFacilityForecast()">
+                <option value="">Select a facility...</option>
+              </select>
+            </div>
+            <div class="opt-field">
+              <label class="opt-label">Scenario</label>
+              <select class="opt-select" id="df-scenario" onchange="renderFacilityForecast()">
+                <option value="1.0">Normal (1.0×)</option>
+                <option value="1.1">Flu Season (1.1×)</option>
+                <option value="1.3">Outbreak (1.3×)</option>
+                <option value="1.5">Disaster (1.5×)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="metric-row" id="df-summary" style="display:none;">
+          <div class="metric-card">
+            <div class="metric-label">Facility</div>
+            <div class="metric-value" style="font-size:16px;" id="df-m-name">—</div>
+            <div class="metric-delta" id="df-m-parish">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Forecast Demand (yhat)</div>
+            <div class="metric-value" id="df-m-yhat">—</div>
+            <div class="metric-delta">daily avg</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Lower Bound</div>
+            <div class="metric-value" id="df-m-lower">—</div>
+            <div class="metric-delta delta-ok">95% CI lower</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Upper Bound</div>
+            <div class="metric-value" id="df-m-upper">—</div>
+            <div class="metric-delta delta-warn">95% CI upper</div>
+          </div>
+        </div>
+
+        <!-- Time series chart -->
+        <div class="card" id="df-chart-card" style="display:none;">
+          <div class="card-header">
+            <div class="card-title" id="df-chart-title">Prophet Forecast</div>
+            <span style="font-size:11px;color:var(--text-tertiary);">yhat with 95% confidence interval</span>
+          </div>
+          <div style="position:relative; height:280px;">
+            <canvas id="facilityForecastChart"></canvas>
+          </div>
+        </div>
+
+        <!-- All facilities table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">All Facilities — Forecast Summary</div>
+            <span style="font-size:11px;color:var(--text-tertiary);" id="df-scenario-label">Normal scenario</span>
+          </div>
+          <table class="opt-table">
+            <thead>
+              <tr>
+                <th>Facility</th>
+                <th>Parish</th>
+                <th>Beds</th>
+                <th>Forecast (yhat)</th>
+                <th>Lower</th>
+                <th>Upper</th>
+                <th>Demand vs Capacity</th>
+              </tr>
+            </thead>
+            <tbody id="df-tbody"></tbody>
+          </table>
+        </div>
+
+      </div><!-- #section-forecast -->
+
       <!-- ── Optimization section ── -->
       <div class="section" id="section-optimization">
 
@@ -757,6 +841,7 @@
       updateForecastChart(range);
     } else {
       fetchForecast(range);
+      renderForecastSection(data);
     }
   }
 
@@ -823,6 +908,162 @@ async function fetchAdmissions() {
 
 function renderAdmissions() {
   if (!admissionsData.length) return;
+
+  /* ── Demand Forecast ── */
+let forecastSummary = [];
+
+function renderForecastSection(data) {
+  forecastSummary = data.forecasts;
+
+  // Populate facility dropdown
+  const sel = document.getElementById("df-facility");
+  if (sel && sel.options.length <= 1) {
+    data.forecasts.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.facility_id;
+      opt.textContent = f.name || f.facility_id;
+      sel.appendChild(opt);
+    });
+  }
+
+  renderForecastTable();
+}
+
+function renderForecastTable() {
+  const multiplier = parseFloat(document.getElementById("df-scenario")?.value || "1.0");
+  const labels = { "1.0": "Normal", "1.1": "Flu Season", "1.3": "Outbreak", "1.5": "Disaster" };
+  const lbl = document.getElementById("df-scenario-label");
+  if (lbl) lbl.textContent = (labels[multiplier.toString()] || "Custom") + " scenario";
+
+  const tbody = document.getElementById("df-tbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = forecastSummary
+    .map(f => {
+      const yhat  = Math.round(f.yhat  * multiplier);
+      const lower = Math.round((f.yhat_lower || f.yhat * 0.85) * multiplier);
+      const upper = Math.round((f.yhat_upper || f.yhat * 1.15) * multiplier);
+      const pct   = f.beds > 0 ? Math.round((yhat / f.beds) * 100) : 0;
+      const color = pct >= 92 ? "#E24B4A" : pct >= 80 ? "#EF9F27" : "#1D9E75";
+      return `<tr>
+        <td style="font-weight:500;">${f.name || f.facility_id}</td>
+        <td style="color:var(--text-secondary);">${f.parish || "—"}</td>
+        <td>${f.beds}</td>
+        <td style="font-weight:500;">${yhat}</td>
+        <td style="color:var(--green);">${lower}</td>
+        <td style="color:var(--amber);">${upper}</td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.min(pct,100)}%;background:${color};"></div></div>
+            <span class="bar-pct">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+}
+
+function renderFacilityForecast() {
+  renderForecastTable();
+
+  const facilityId = document.getElementById("df-facility").value;
+  if (!facilityId) return;
+
+  const multiplier = parseFloat(document.getElementById("df-scenario").value || "1.0");
+  const f = forecastSummary.find(x => x.facility_id === facilityId);
+  if (!f) return;
+
+  const yhat  = Math.round(f.yhat  * multiplier);
+  const lower = Math.round((f.yhat_lower || f.yhat * 0.85) * multiplier);
+  const upper = Math.round((f.yhat_upper || f.yhat * 1.15) * multiplier);
+
+  // Show summary cards
+  document.getElementById("df-summary").style.display    = "grid";
+  document.getElementById("df-chart-card").style.display = "block";
+  document.getElementById("df-m-name").textContent   = f.name || f.facility_id;
+  document.getElementById("df-m-parish").textContent = f.parish || "—";
+  document.getElementById("df-m-yhat").textContent   = yhat;
+  document.getElementById("df-m-lower").textContent  = lower;
+  document.getElementById("df-m-upper").textContent  = upper;
+  document.getElementById("df-chart-title").textContent = `Prophet Forecast — ${f.name || f.facility_id}`;
+
+  // Build 30-day time series with hourly pattern variation
+  const today = new Date();
+  const labels = [];
+  const yhats  = [];
+  const lowers = [];
+  const uppers = [];
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    labels.push(d.toLocaleDateString("en-JM", { month: "short", day: "numeric" }));
+    const variation = 1 + 0.06 * Math.sin((i / 30) * Math.PI * 2);
+    yhats.push(Math.round(yhat  * variation));
+    lowers.push(Math.round(lower * variation));
+    uppers.push(Math.round(upper * variation));
+  }
+
+  // Destroy old chart if exists
+  const existing = Chart.getChart("facilityForecastChart");
+  if (existing) existing.destroy();
+
+  new Chart(document.getElementById("facilityForecastChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Capacity",
+          data: Array(30).fill(f.beds),
+          borderColor: "#E24B4A",
+          borderDash: [4, 3],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "yhat",
+          data: yhats,
+          borderColor: "#1D9E75",
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.4,
+        },
+        {
+          label: "Upper CI",
+          data: uppers,
+          borderColor: "rgba(29,158,117,0.2)",
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "Lower CI",
+          data: lowers,
+          borderColor: "rgba(29,158,117,0.2)",
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: "-1",
+          backgroundColor: "rgba(29,158,117,0.08)",
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { font: { size: 11 }, color: "#888", boxWidth: 12 }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 9 }, color: "#888", maxTicksLimit: 10 }, grid: { display: false } },
+        y: { ticks: { font: { size: 9 }, color: "#888" }, grid: { color: "rgba(128,128,128,0.1)" } }
+      }
+    }
+  });
+}
 
   // Aggregate totals across all records
   let totalER = 0, totalICU = 0, totalMat = 0;
@@ -1029,6 +1270,19 @@ function filterBedTable() {
       data.facilities.map(f => `<option value="${f.facility_code}">${f.name}</option>`).join("");
       }
 
+      // Populate forecast facility dropdown from bed data
+      const dfSelect = document.getElementById("df-facility");
+      if (dfSelect && dfSelect.options.length <= 1) {
+      data.facilities.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.facility_code;
+      opt.textContent = f.name;
+      dfSelect.appendChild(opt);
+      });
+    }
+
+
+
       // Add alert if any critical
       if (data.critical_count > 0) {
         const critFacs = facilities.filter(f => f.status === "critical").map(f => f.name).join(", ");
@@ -1106,6 +1360,7 @@ function filterBedTable() {
     ward:     { title:"Ward Status — Live Bed Count",                   sub:"Clinical view · Admissions & discharges" },
     ministry: { title:"National Overview — Jamaica Hospital Network",   sub:"Ministry of Health · All 6 facilities across parishes" },
     analyst:  { title:"Model Outputs — Prophet + PuLP",                 sub:"Forecast accuracy · Solver logs · Raw data export" },
+    forecast: { title: "Demand Forecast — Prophet Models", sub: "Facility-level yhat · 30-day horizon · Confidence intervals" },
   };
   const roleLabels = {
     admin:"Hospital Administrator", ward:"Ward / Clinical Staff",
@@ -1126,6 +1381,7 @@ function showSection(name, navEl) {
     document.getElementById("section-" + name).classList.add("active");
     if (navEl) navEl.classList.add("active");
     if (name === "admissions" && !admissionsData.length) fetchAdmissions();
+    if (name === "forecast" && !forecastSummary.length) fetchForecast("24h");
 
     const titles = {
       overview:     { title: "Operations Overview — Jamaica Hospital Network",  sub: "All wards · Admissions, capacity & overflow risk" },
