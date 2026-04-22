@@ -62,7 +62,7 @@ hospital-resource-software/
 ├── backend/
 │   ├── main.py                  # FastAPI app
 │   ├── models/
-│   │   └── schemas.py           # Pydantic models
+│   │   └── pycache.py           # Pydantic models
 │   ├── routers/
 │   │   ├── beds.py
 │   │   ├── forecast.py
