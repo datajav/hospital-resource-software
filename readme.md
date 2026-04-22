@@ -8,7 +8,7 @@ A full-stack hospital resource management dashboard for the Jamaican public heal
 
 ## Screenshots
 
-> Add screenshots of the dashboard here
+![assests](assests/homepage.png)
 
 ---
 
