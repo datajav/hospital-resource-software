@@ -1195,8 +1195,67 @@ let allBedFacilities = [];
 function renderBedManagement(data) {
   allBedFacilities = data.facilities;
 
+  document.getElementById("bm-total").textContent     = data.total_beds;
+  document.getElementById("bm-occupied").textContent  = data.total_occupied;
+  document.getElementById("bm-available").textContent = data.total_available;
+  document.getElementById("bm-critical").textContent  = data.critical_count;
+  document.getElementById("bm-util").textContent      = `${Math.round(data.system_utilization_pct * 100)}% utilization`;
+  document.getElementById("bm-headroom").textContent  = `${Math.round((1 - data.system_utilization_pct) * 100)}% headroom`;
+  document.getElementById("bm-facilities").textContent = `Across ${data.facilities.length} facilities`;
+  document.getElementById("bm-critical-lbl").textContent = data.critical_count > 0 ? "Need attention" : "All stable";
+  document.getElementById("bm-last-updated").textContent = `Updated ${new Date().toLocaleTimeString("en-JM")}`;
+
+  const parishes = [...new Set(data.facilities.map(f => f.parish).filter(Boolean))].sort();
+  const parishSelect = document.getElementById("bm-parish-filter");
+  parishSelect.innerHTML = '<option value="all">All Parishes</option>' +
+    parishes.map(p => `<option value="${p}">${p}</option>`).join("");
+
+  filterBedTable();
+}
+
+function filterBedTable() {
+  const parish = document.getElementById("bm-parish-filter").value;
+  const status = document.getElementById("bm-status-filter").value;
+  const sort   = document.getElementById("bm-sort").value;
+
+  let rows = allBedFacilities.filter(f => {
+    if (parish !== "all" && f.parish !== parish) return false;
+    if (status !== "all" && f.rag_status !== status) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    if (sort === "util-desc") return b.utilization_pct - a.utilization_pct;
+    if (sort === "util-asc")  return a.utilization_pct - b.utilization_pct;
+    if (sort === "name")      return a.name.localeCompare(b.name);
+    if (sort === "available") return b.available_beds - a.available_beds;
+    return 0;
+  });
+
+  const tbody = document.getElementById("bm-tbody");
+  tbody.innerHTML = rows.map(f => {
+    const pct      = Math.round(f.utilization_pct * 100);
+    const color    = f.rag_status === "critical" ? "#E24B4A" : f.rag_status === "warning" ? "#EF9F27" : "#1D9E75";
+    const pillText = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.rag_status] || f.rag_status;
+    return `<tr>
+      <td style="font-weight:500;">${f.name}</td>
+      <td style="color:var(--text-secondary);">${f.parish}</td>
+      <td style="color:var(--text-secondary);">${f.health_region}</td>
+      <td>${f.total_beds}</td>
+      <td>${f.occupied_beds}</td>
+      <td style="color:var(--green);">${f.available_beds}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+          <span class="bar-pct">${pct}%</span>
+        </div>
+      </td>
+      <td><span class="status-pill status-${f.rag_status}">${pillText}</span></td>
+    </tr>`;
+  }).join("");
+}
+
 /* ── Live Admissions ── */
-let admissionsData = [];
 
 async function fetchAdmissions() {
   const facility   = document.getElementById("la-facility-filter").value;
@@ -1335,69 +1394,7 @@ function renderAdmissionsTable() {
   `).join("");
 }
 
-  // Summary metrics
-  document.getElementById("bm-total").textContent     = data.total_beds;
-  document.getElementById("bm-occupied").textContent  = data.total_occupied;
-  document.getElementById("bm-available").textContent = data.total_available;
-  document.getElementById("bm-critical").textContent  = data.critical_count;
-  document.getElementById("bm-util").textContent      = `${Math.round(data.system_utilization_pct * 100)}% utilization`;
-  document.getElementById("bm-headroom").textContent  = `${Math.round((1 - data.system_utilization_pct) * 100)}% headroom`;
-  document.getElementById("bm-facilities").textContent = `Across ${data.facilities.length} facilities`;
-  document.getElementById("bm-critical-lbl").textContent = data.critical_count > 0 ? "Need attention" : "All stable";
-  document.getElementById("bm-last-updated").textContent = `Updated ${new Date().toLocaleTimeString("en-JM")}`;
-
-  // Populate parish filter
-  const parishes = [...new Set(data.facilities.map(f => f.parish).filter(Boolean))].sort();
-  const parishSelect = document.getElementById("bm-parish-filter");
-  parishSelect.innerHTML = '<option value="all">All Parishes</option>' +
-    parishes.map(p => `<option value="${p}">${p}</option>`).join("");
-
-  filterBedTable();
-}
-
-function filterBedTable() {
-  const parish = document.getElementById("bm-parish-filter").value;
-  const status = document.getElementById("bm-status-filter").value;
-  const sort   = document.getElementById("bm-sort").value;
-
-  let rows = allBedFacilities.filter(f => {
-    if (parish !== "all" && f.parish !== parish) return false;
-    if (status !== "all" && f.rag_status !== status) return false;
-    return true;
-  });
-
-  rows.sort((a, b) => {
-    if (sort === "util-desc") return b.utilization_pct - a.utilization_pct;
-    if (sort === "util-asc")  return a.utilization_pct - b.utilization_pct;
-    if (sort === "name")      return a.name.localeCompare(b.name);
-    if (sort === "available") return b.available_beds - a.available_beds;
-    return 0;
-  });
-
-  const tbody = document.getElementById("bm-tbody");
-  tbody.innerHTML = rows.map(f => {
-    const pct      = Math.round(f.utilization_pct * 100);
-    const color    = f.rag_status === "critical" ? "#E24B4A" : f.rag_status === "warning" ? "#EF9F27" : "#1D9E75";
-    const pillText = { critical:"Critical", warning:"Warning", stable:"Stable" }[f.rag_status] || f.rag_status;
-    return `<tr>
-      <td style="font-weight:500;">${f.name}</td>
-      <td style="color:var(--text-secondary);">${f.parish}</td>
-      <td style="color:var(--text-secondary);">${f.health_region}</td>
-      <td>${f.total_beds}</td>
-      <td>${f.occupied_beds}</td>
-      <td style="color:var(--green);">${f.available_beds}</td>
-      <td>
-        <div class="bar-wrap">
-          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
-          <span class="bar-pct">${pct}%</span>
-        </div>
-      </td>
-      <td><span class="status-pill status-${f.rag_status}">${pillText}</span></td>
-    </tr>`;
-  }).join("");
-}
-
-  /* ── API fetch ── */
+/* ── API fetch ── */
   async function fetchBeds() {
     try {
       const res  = await fetch(`${API}/api/beds`);

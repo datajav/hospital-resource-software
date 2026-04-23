@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: jamaicahealthops-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: free
+    envVars:
+      - key: DS_DATA_PATH
+        value: /app/data
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
+
+  - type: web
+    name: jamaicahealthops-ui
+    runtime: docker
+    dockerfilePath: ./Dockerfile.frontend
+    plan: free
