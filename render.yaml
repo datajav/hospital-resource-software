@@ -7,10 +7,6 @@ services:
     envVars:
       - key: DS_DATA_PATH
         value: /app/data
-    disk:
-      name: data
-      mountPath: /app/data
-      sizeGB: 1
 
   - type: web
     name: jamaicahealthops-ui
