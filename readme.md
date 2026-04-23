@@ -3,7 +3,7 @@
 A full-stack hospital resource management dashboard for the Jamaican public health network. Built on top of a data science project that uses Prophet forecasting and PuLP optimisation to model patient demand and bed allocation across all public hospitals in Jamaica.
 
 > **Related repository:** [hospital-resource-optimization](https://github.com/datajav/hospital-resource-optimization) — the DS research project this app is built on, including EDA, synthetic data generation, Prophet notebooks, and optimisation analysis.
->> **Live Demo:** [hospital-resource-optimization](https://github.com/datajav/hospital-resource-optimization) — the live demo that you can expirement with is available at the following link. 
+> **Live Demo:** (https://jamaicahealthops-ui.onrender.com) — the live demo that you can expirement with is available at the following link. 
 
 ---
 
