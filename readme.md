@@ -1,4 +1,4 @@
-# CareMetrics — Jamaica Hospital Intelligence Platform
+# Jamaica Hospital Intelligence Platform
 
 A full-stack hospital resource management dashboard for the Jamaican public health network. Built on top of a data science project that uses Prophet forecasting and PuLP optimisation to model patient demand and bed allocation across all public hospitals in Jamaica.
 
